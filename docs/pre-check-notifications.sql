@@ -30,7 +30,8 @@ WHERE n.nspname = 'public'
   AND p.proname IN ('is_privileged_request', 'is_admin_or_reviewer');
 
 -- 3. OLD TABLES AND COLUMNS THE GUARD TRIGGERS ATTACH TO
---    WHAT YOU WANT: 6 rows (every one listed below).
+--    WHAT YOU WANT: 9 rows (every one listed below). A missing notifications.metadata is
+--    created by the migration; a missing title or link means a different table: STOP.
 SELECT table_name, column_name
 FROM information_schema.columns
 WHERE table_schema = 'public'
@@ -40,7 +41,10 @@ WHERE table_schema = 'public'
     ('profiles', 'tutor_verification_status'),
     ('tutor_verification_requests', 'file_path'),
     ('tutor_verified_subjects', 'is_public'),
-    ('notifications', 'type')
+    ('notifications', 'type'),
+    ('notifications', 'title'),
+    ('notifications', 'link'),
+    ('notifications', 'metadata')
   )
 ORDER BY 1, 2;
 

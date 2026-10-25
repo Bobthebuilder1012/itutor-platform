@@ -59,7 +59,7 @@ CREATE TABLE public.profiles (
 );
 CREATE TABLE public.subjects (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name text);
 CREATE TABLE public.notifications (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid, type text, message text, data jsonb, created_at timestamptz DEFAULT now()
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid, type text, title text, message text, link text, is_read boolean DEFAULT false, metadata jsonb DEFAULT '{}'::jsonb, created_at timestamptz DEFAULT now()
 );
 ALTER TABLE public.notifications ADD CONSTRAINT notifications_type_check
   CHECK (type = ANY (ARRAY['booking_request'::text, 'new_message'::text, 'child_joined_class'::text])) NOT VALID;
@@ -225,6 +225,14 @@ ok('271 added the VERIFICATION_* types and kept the others', /VERIFICATION_APPRO
 ok('271 kept NOT VALID as it was', nc[0].convalidated === false, JSON.stringify(nc[0]));
 await db.exec(`INSERT INTO public.notifications (user_id, type, message) VALUES ('${T}','VERIFICATION_APPROVED','ok')`);
 await expectError(`INSERT INTO public.notifications (user_id, type, message) VALUES ('${T}','made_up_type','no')`, /check/i, '271 still rejects an unknown notification type');
+// one notice per change: the new types and the dedupe index
+for (const t of ['VERIFICATION_IN_REVIEW', 'VERIFICATION_REVERIFICATION_REQUIRED', 'VERIFICATION_CHECK_FAILED']) {
+  const e = await run(`INSERT INTO public.notifications (user_id, type, title, message, metadata) VALUES ('${T}','${t}','t','m','{"dedupe_key":"k-${t}"}')`, t);
+  ok(`271 accepts the notification type ${t}`, !e, e ?? '');
+}
+await expectError(`INSERT INTO public.notifications (user_id, type, title, message, metadata) VALUES ('${T}','VERIFICATION_IN_REVIEW','t','m','{"dedupe_key":"k-VERIFICATION_IN_REVIEW"}')`, /duplicate key|unique/i, '271 a repeated dedupe_key for the same teacher is refused');
+ok('271 the same dedupe_key for a DIFFERENT teacher is allowed', !(await run(`INSERT INTO public.notifications (user_id, type, title, message, metadata) VALUES ('${T2}','VERIFICATION_IN_REVIEW','t','m','{"dedupe_key":"k-VERIFICATION_IN_REVIEW"}')`)));
+ok('271 notices without a dedupe_key are not limited', !(await run(`INSERT INTO public.notifications (user_id, type, title, message) VALUES ('${T}','VERIFICATION_APPROVED','t','m'),('${T}','VERIFICATION_APPROVED','t','m')`)));
 // re-running the DO block is a no-op
 const again = await run(read(mig('271_verification_security_hardening.sql')), '271 re-run');
 ok('271 is safe to run twice', !again, again ?? '');
@@ -324,6 +332,8 @@ for (const f of ['275_identity_outcomes_rollback.sql', '274_identity_providers_r
 }
 const left = await q(`SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name LIKE '%\\_v2%' ESCAPE '\\' OR table_name IN ('identity_outcomes','identity_webhook_events')`);
 ok('after the full rollback no v2 tables remain', left.length === 0, JSON.stringify(left));
+const idx = await q(`SELECT 1 FROM pg_indexes WHERE indexname = 'uq_notifications_verification_dedupe'`);
+ok('after the full rollback the dedupe index is gone', idx.length === 0, JSON.stringify(idx));
 
 console.log(results.join('\n'));
 console.log(`\n${pass} passed, ${fail} failed`);

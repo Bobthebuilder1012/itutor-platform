@@ -49,6 +49,8 @@ let o = await objects(db);
 ok('apply created 6 tables and 4 guard triggers', o.tables === 6 && o.guards === 4, JSON.stringify(o));
 const nc = (await db.query(`SELECT pg_get_constraintdef(oid) d FROM pg_constraint WHERE conname='notifications_type_check'`)).rows[0].d;
 ok('apply widened notifications_type_check and kept the old types', /VERIFICATION_APPROVED/.test(nc) && /booking_request/.test(nc), nc);
+const hasIdx = async () => (await db.query("SELECT 1 FROM pg_indexes WHERE indexname = 'uq_notifications_verification_dedupe'")).rows.length === 1;
+ok('apply created the notification dedupe index', await hasIdx());
 ok('apply twice is safe', !(await tryRun(db, apply)));
 
 // 3. rollback
@@ -56,6 +58,7 @@ const e = await tryRun(db, rollback);
 ok('rollback runs', !e, e ?? '');
 o = await objects(db);
 ok('rollback removed the tables and guard triggers', o.tables === 0 && o.guards === 0, JSON.stringify(o));
+ok('rollback removed the dedupe index', !(await hasIdx()));
 ok('apply works again after a rollback', !(await tryRun(db, apply)));
 
 // 4. a failure leaves nothing behind (the whole file is one transaction)

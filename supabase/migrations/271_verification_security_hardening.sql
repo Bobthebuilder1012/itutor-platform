@@ -37,6 +37,10 @@
 --     user can update their own profiles row (034), so a user could have set
 --     is_reviewer = true on themselves. Added as a SEPARATE trigger so the 217
 --     function, which has drifted before, is not redefined.
+--  7. notifications: one verification notice per change. A UNIQUE index on
+--     (user_id, metadata->>'dedupe_key') so a repeated provider webhook (or any
+--     retry) can never insert the same notice twice. Rows without a dedupe_key are
+--     not affected. See lib/verificationV2/notify.ts.
 --  6. notifications_type_check: lacked VERIFICATION_APPROVED / _REJECTED /
 --     _REVOKED, so the inserts the verification routes make were rejected.
 --
@@ -189,7 +193,10 @@ CREATE TRIGGER trg_profiles_guard_verification_columns
 DO $$
 DECLARE
   v_name constant text := 'notifications_type_check';
-  v_needed text[] := ARRAY['VERIFICATION_APPROVED', 'VERIFICATION_REJECTED', 'VERIFICATION_REVOKED'];
+  v_needed text[] := ARRAY[
+    'VERIFICATION_APPROVED', 'VERIFICATION_REJECTED', 'VERIFICATION_REVOKED',
+    'VERIFICATION_IN_REVIEW', 'VERIFICATION_REVERIFICATION_REQUIRED', 'VERIFICATION_CHECK_FAILED'
+  ];
   v_missing text[] := ARRAY[]::text[];
   v_def text;
   v_item text;
@@ -237,5 +244,15 @@ BEGIN
 
   RAISE NOTICE 'added % to %', v_missing, v_name;
 END $$;
+
+-- ---------------------------------------------------
+-- 7. One verification notice per change
+-- ---------------------------------------------------
+-- metadata exists live (migration 123); this only guards a database that lacks it.
+ALTER TABLE public.notifications ADD COLUMN IF NOT EXISTS metadata jsonb DEFAULT '{}'::jsonb;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_notifications_verification_dedupe
+  ON public.notifications (user_id, (metadata->>'dedupe_key'))
+  WHERE metadata->>'dedupe_key' IS NOT NULL;
 
 COMMIT;

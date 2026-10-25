@@ -10,6 +10,7 @@ import { getServiceClient } from '@/lib/supabase/server';
 import { isVerificationV2Enabled } from '@/lib/featureFlags/verificationV2';
 import { isRuleRefusal, setIdentityStatus } from '@/lib/verification/setStatus';
 import { identityRouting } from '@/config/identityRouting';
+import { notifyIdentityOutcome } from './notify';
 import { normalizeIdentityReason, normalizeIdentityStatus, outcomeToStored } from '@/lib/identity/mapping';
 import { getProvider, routeForCountry } from '@/lib/identity/registry';
 import { decideNextStep } from '@/lib/identity/routing';
@@ -170,6 +171,8 @@ export async function refreshIdentity(db: Db, row: VerificationRow): Promise<Ver
       }
       return row;
     }
+    // A failed check is announced once (dedupe key); a failure to write it is logged, not shown.
+    await notifyIdentityOutcome(db, row.tutor_id, stored.status, stored.reason);
     return { ...row, identity_status: stored.status as IdentityStatus, identity_error_code: stored.reason };
   } catch (err) {
     console.warn('[verification-v2] identity refresh failed:', (err as Error).message);

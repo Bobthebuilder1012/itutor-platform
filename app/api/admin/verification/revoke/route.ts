@@ -11,6 +11,7 @@ import { getServiceClient } from '@/lib/supabase/server';
 import { decisionActor } from '@/lib/verification/decide';
 import { isVerificationV2Enabled } from '@/lib/featureFlags/verificationV2';
 import { afterRevocation } from '@/lib/verificationV2/afterDecision';
+import { notifyTeacher } from '@/lib/verificationV2/notify';
 import { setProfileStatus, setV2Status, statusErrorResponse } from '@/lib/verification/setStatus';
 
 export const dynamic = 'force-dynamic';
@@ -91,6 +92,17 @@ export async function POST(request: NextRequest) {
     if (isVerificationV2Enabled()) {
       const done = await afterRevocation(tutor_id, serviceSupabase);
       cleanup = { redaction: done.redaction.ok ? 'ok' : 'failed', filesDeleted: !!done.files };
+    }
+
+    // New flow (flag on): the teacher's in-app notice, with the right columns and a dedupe
+    // key. The stamp is the time now unless this call revoked a v2 record.
+    if (isVerificationV2Enabled() && revoked.changed) {
+      await notifyTeacher(
+        serviceSupabase,
+        tutor_id,
+        { kind: 'revoked', reason },
+        v2.ok && v2.changed ? {} : { stamp: new Date().toISOString() }
+      );
     }
 
     const { error: notificationError } = await serviceSupabase.from('notifications').insert({

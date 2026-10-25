@@ -12,6 +12,7 @@ import { NextResponse } from 'next/server';
 import { getServiceClient } from '@/lib/supabase/server';
 import { isVerificationV2Enabled } from '@/lib/featureFlags/verificationV2';
 import { isRuleRefusal, setIdentityStatus, type Db } from '@/lib/verification/setStatus';
+import { notifyIdentityOutcome } from '@/lib/verificationV2/notify';
 import { outcomeToStored } from './mapping';
 import { getProvider } from './registry';
 import {
@@ -97,7 +98,17 @@ export async function applyProviderOutcome(
     db,
   });
 
-  if (res.ok) return 'applied';
+  if (res.ok) {
+    // Tell the teacher about a failed check. Also on a repeat delivery (changed is
+    // false): the notice has a dedupe key, so a repeat is a no-op, and a first
+    // attempt that failed is retried here. The status is already saved either way.
+    const notice = await notifyIdentityOutcome(db, tutorId, stored.status, stored.reason);
+    if (notice.status === 'failed') {
+      // An error, not a 200, so the provider re-delivers and the notice is retried.
+      throw new Error('Identity status saved, but the teacher notice could not be written');
+    }
+    return 'applied';
+  }
   if (isRuleRefusal(res) || res.code === 'stale_session' || res.code === 'not_found') return 'ignored';
   // conflict (a concurrent change) and db_error are retried by the provider.
   throw new Error(res.message);

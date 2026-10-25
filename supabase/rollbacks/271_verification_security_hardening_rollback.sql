@@ -6,14 +6,18 @@
 --
 -- Removes the triggers and the identity_webhook_events table.
 --
--- DOES NOT narrow notifications_type_check. Section 6 of 271 only ADDED three
+-- DOES NOT narrow notifications_type_check. Section 6 of 271 only ADDED six
 -- values to the live list; taking them out again could reject rows that already
 -- use them, and nothing is gained by it. Leaving the wider list is harmless. If
 -- you really must remove them, delete or update any notifications whose type is
--- VERIFICATION_APPROVED / VERIFICATION_REJECTED / VERIFICATION_REVOKED first,
+-- VERIFICATION_APPROVED / _REJECTED / _REVOKED / _IN_REVIEW / _REVERIFICATION_REQUIRED /
+-- _CHECK_FAILED first,
 -- then rebuild the constraint by hand from its live definition.
 
 BEGIN;
+
+-- Section 7: the dedupe index (the notices themselves are kept).
+DROP INDEX IF EXISTS public.uq_notifications_verification_dedupe;
 
 DROP TRIGGER IF EXISTS trg_profiles_guard_verification_columns ON public.profiles;
 DROP FUNCTION IF EXISTS public.profiles_guard_verification_columns();

@@ -1,11 +1,12 @@
 // POST /api/tutor/verification-v2/submit
-// Moves the submission to IN_REVIEW. That is all: no approval, no email, no
-// notification, and profiles.tutor_verification_status is not touched.
+// Moves the submission to IN_REVIEW and tells the teacher in-app. That is all: no
+// approval, no email, and profiles.tutor_verification_status is not touched.
 // Needs consent, a verified identity and at least one credential, all checked
 // here from saved data, not from anything the browser claims.
 
 import { NextResponse } from 'next/server';
 import { setV2Status, statusErrorResponse } from '@/lib/verification/setStatus';
+import { notifyTeacher } from '@/lib/verificationV2/notify';
 import {
   blocked,
   guardV2,
@@ -36,6 +37,9 @@ export async function POST() {
     // and conditional on the status just read, so a double click cannot submit twice.
     const submitted = await setV2Status({ tutorId, to: 'IN_REVIEW', actor: 'tutor', db });
     if (!submitted.ok) return statusErrorResponse(submitted);
+
+    // Saved. A notice that cannot be written never undoes the submission.
+    await notifyTeacher(db, tutorId, { kind: 'in_review' });
 
     return NextResponse.json({ ok: true, status: 'IN_REVIEW' });
   } catch (err) {

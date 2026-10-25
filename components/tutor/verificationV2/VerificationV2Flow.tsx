@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { VerificationV2StateDto } from '@/lib/verificationV2/constants';
+import { pollIntervalMs, stateSignature } from '@/lib/verificationV2/poll';
 import ConsentStep from './ConsentStep';
 import IdentityStep from './IdentityStep';
 import CredentialsStep from './CredentialsStep';
@@ -20,6 +21,8 @@ export default function VerificationV2Flow() {
   // True once the teacher has chosen to work on the form from the status view.
   const [working, setWorking] = useState(false);
   const resumed = useRef(false);
+  const latest = useRef<VerificationV2StateDto | null>(null);
+  latest.current = state;
 
   const load = useCallback(async () => {
     try {
@@ -54,6 +57,37 @@ export default function VerificationV2Flow() {
       window.history.replaceState(null, '', window.location.pathname);
     }
   }, [load]);
+
+  // Live status: while a change can still arrive from outside (in review, in progress),
+  // ask again every few seconds, only while the tab is visible, and apply the answer
+  // only if something the teacher cares about changed. It stops by itself once the
+  // status is final (verified, rejected, revoked, verify-again): no manual refresh.
+  const status = state?.status ?? null;
+  useEffect(() => {
+    const every = pollIntervalMs(status);
+    if (!every) return;
+    let stopped = false;
+    const poll = async () => {
+      if (stopped || document.visibilityState !== 'visible') return;
+      try {
+        const res = await fetch('/api/tutor/verification-v2/state', { cache: 'no-store' });
+        if (!res.ok || stopped) return; // a failed poll is silent: the next one tries again
+        const next = (await res.json()) as VerificationV2StateDto;
+        const cur = latest.current;
+        if (!cur || stateSignature(next) !== stateSignature(cur)) setState(next);
+      } catch {
+        /* offline: try again on the next tick */
+      }
+    };
+    const timer = setInterval(() => void poll(), every);
+    const onVisible = () => void poll();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [status]);
 
   if (error && !state) {
     return (

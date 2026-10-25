@@ -19,7 +19,15 @@ export function makeFakeDb(seed: Record<string, Row[]> = {}, seedFiles: Record<s
   const files = seedFiles;
   const removed: { bucket: string; path: string }[] = [];
   /** Set to make every update fail, to test the error path. */
-  const failOn: { update?: boolean; select?: boolean; insert?: boolean; storageRemove?: boolean; storageList?: boolean } = {};
+  const failOn: {
+    update?: boolean;
+    select?: boolean;
+    insert?: boolean;
+    /** Fail inserts into these tables only. */
+    insertTables?: string[];
+    storageRemove?: boolean;
+    storageList?: boolean;
+  } = {};
 
   function from(table: string) {
     let op: FakeCall['op'] = 'select';
@@ -115,6 +123,24 @@ export function makeFakeDb(seed: Record<string, Row[]> = {}, seedFiles: Record<s
       ) {
         calls.push({ table, op, patch, matched: 0 });
         return Promise.resolve({ data: null, error: { message: 'simulated database failure' } });
+      }
+
+      if (op === 'insert' && failOn.insertTables?.includes(table)) {
+        calls.push({ table, op, patch, matched: 0 });
+        return Promise.resolve({ data: null, error: { message: 'simulated database failure', code: 'XX000' } });
+      }
+
+      // Mirrors migration 271's unique index on notifications (user_id, metadata->>'dedupe_key').
+      if (op === 'insert' && table === 'notifications') {
+        const list = Array.isArray(patch) ? patch : [patch];
+        for (const p of list) {
+          const key = p?.metadata?.dedupe_key;
+          if (key == null) continue;
+          if (rows.some((r) => r.user_id === p.user_id && r.metadata?.dedupe_key === key)) {
+            calls.push({ table, op, patch, matched: 0 });
+            return Promise.resolve({ data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint "uq_notifications_verification_dedupe"' } });
+          }
+        }
       }
 
       if (op === 'update') {

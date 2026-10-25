@@ -3,9 +3,13 @@
 // (so the allowed-transition map applies) and every decision is written to the
 // append-only audit table (migration 272).
 //
-// What this never does: send an email or a notification, read an ID image (v2
-// holds none; the check is Stripe's), or change anything if a check fails. Both
-// the v2 and the profile transition are checked BEFORE the first write.
+// After a change is saved the teacher gets an in-app notice (lib/verificationV2/notify.ts,
+// behind VERIFICATION_V2_ENABLED). A notice that fails to write never undoes or blocks
+// the decision; it is reported as `notification: 'failed'`.
+//
+// What this never does: send an email, read an ID image (v2 holds none; the check is
+// the provider's), or change anything if a check fails. Both the v2 and the profile
+// transition are checked BEFORE the first write.
 
 import { getServiceClient } from '@/lib/supabase/server';
 import {
@@ -23,6 +27,7 @@ import {
 import type { RedactResult } from './redaction';
 import type { DeletionResult } from './fileDeletion';
 import { afterApproval, afterRejection, afterRevocation } from './afterDecision';
+import { notifyTeacher, type NotifyStatus } from './notify';
 
 export type ReviewActor = Extract<VerificationActor, 'reviewer' | 'admin'>;
 
@@ -43,6 +48,8 @@ export interface ReviewSuccess {
   profile: { from: string; to: string | null; changed: boolean };
   redaction?: RedactResult;
   files?: DeletionResult;
+  /** What happened to the teacher's in-app notice. 'skipped' while the flag is off. */
+  notification?: NotifyStatus;
 }
 
 const fail = (
@@ -160,6 +167,9 @@ export async function approveV2(ctx: ReviewCtx, tutorId: string): Promise<Review
     return { ...moved, partial: true };
   }
 
+  // Saved: tell the teacher now, even if the audit write below fails.
+  const notified = await notifyTeacher(db, tutorId, { kind: 'verified' });
+
   const auditError = await recordDecision(db, {
     tutorId, actor: ctx.actor, actorId: ctx.actorId, action: 'APPROVE',
     from: row.status, to: 'VERIFIED', profileFrom: normalizeStatus('profile', prof.status), profileTo: 'VERIFIED',
@@ -177,6 +187,7 @@ export async function approveV2(ctx: ReviewCtx, tutorId: string): Promise<Review
     to: 'VERIFIED',
     profile: { from: normalizeStatus('profile', prof.status), to: 'VERIFIED', changed: moved.changed },
     redaction,
+    notification: notified.status,
   };
 }
 
@@ -225,6 +236,8 @@ export async function rejectV2(
     profileTo = effect.to;
   }
 
+  const notified = await notifyTeacher(db, tutorId, { kind: 'rejected', reason: why });
+
   const auditError = await recordDecision(db, {
     tutorId, actor: ctx.actor, actorId: ctx.actorId, action: 'REJECT', reason: why,
     from: row.status, to: 'REJECTED', profileFrom: normalizeStatus('profile', prof.status), profileTo,
@@ -244,6 +257,7 @@ export async function rejectV2(
     profile: { from: normalizeStatus('profile', prof.status), to: profileTo, changed: profileChanged },
     redaction,
     files,
+    notification: notified.status,
   };
 }
 
@@ -284,6 +298,15 @@ export async function revokeV2(
     }
   }
 
+  // Revoked: tell the teacher now, even if a later step fails. Without a v2 record
+  // that was just revoked there is no fresh decided_at, so the stamp is the time now.
+  const notified = await notifyTeacher(
+    db,
+    tutorId,
+    { kind: 'revoked', reason: why },
+    row && row.status === 'VERIFIED' ? {} : { stamp: new Date().toISOString() }
+  );
+
   const hideError = await hideVerifiedSubjects(db, tutorId);
   if (hideError) {
     console.error(`[verification-v2/review] ${tutorId}: revoked but verified subjects not hidden: ${hideError}`);
@@ -309,6 +332,7 @@ export async function revokeV2(
     profile: { from: normalizeStatus('profile', prof.status), to: 'REVOKED', changed: moved.changed },
     redaction,
     files,
+    notification: notified.status,
   };
 }
 
@@ -325,12 +349,14 @@ export interface ReverifyReport {
   skipped: number;
   failed: { tutorId: string; error: string }[];
   tutorIds: string[];
+  /** Teachers whose in-app notice could not be written (their status DID change). */
+  notificationsFailed: number;
 }
 
 /**
  * Asks teachers to verify again. Admin only. Defaults to a DRY RUN that only
- * counts. Nothing runs this automatically, and it sends nothing to the teachers:
- * they see the new status the next time they open the page.
+ * counts. Nothing runs this automatically. Each teacher whose status changes gets an
+ * in-app notice (no email), and their status page picks the change up on its own.
  *
  *   verified  existing VERIFIED teachers
  *   pending   applicants mid-review in the old flow (PENDING / PROCESSING)
@@ -366,6 +392,7 @@ export async function requireReverification(
   const report: ReverifyReport = {
     dryRun, scope, matched: (tutors ?? []).length, changed: 0, skipped: 0, failed: [],
     tutorIds: (tutors ?? []).map((t: any) => t.id),
+    notificationsFailed: 0,
   };
   if (dryRun) return report;
 
@@ -393,6 +420,11 @@ export async function requireReverification(
       }
       v2From = row.status;
     }
+
+    // Their status changed: tell them. The stamp is the time now unless a v2 decision
+    // is on record, so a later round of reverification is a new notice.
+    const notified = await notifyTeacher(db, t.id, { kind: 'reverification_required' }, { stamp: new Date().toISOString() });
+    if (notified.status === 'failed') report.notificationsFailed++;
 
     const auditError = await recordDecision(db, {
       tutorId: t.id, actor: ctx.actor, actorId: ctx.actorId, action: 'REQUIRE_REVERIFICATION',
