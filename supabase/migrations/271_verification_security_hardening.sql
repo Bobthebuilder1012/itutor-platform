@@ -1,11 +1,11 @@
 -- =====================================================
--- 253: VERIFICATION SECURITY HARDENING
+-- 271: VERIFICATION SECURITY HARDENING
 -- =====================================================
 -- WRITTEN, NOT APPLIED. Apply to STAGING first.
--- Rollback: supabase/rollbacks/253_verification_security_hardening_rollback.sql
+-- Rollback: supabase/rollbacks/271_verification_security_hardening_rollback.sql
 -- Additive: new table, new triggers, one constraint widened. Nothing dropped.
 --
--- DEPENDS ON 252_teacher_verification_v2.sql (the v2 tables) being applied first.
+-- DEPENDS ON 270_teacher_verification_v2.sql (the v2 tables) being applied first.
 --
 -- =====================================================================
 -- !! VERIFY THE LIVE CONSTRAINT BEFORE APPLYING (section 5) !!

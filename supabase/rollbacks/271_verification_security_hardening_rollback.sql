@@ -1,12 +1,12 @@
 -- =====================================================
--- ROLLBACK for 253_verification_security_hardening.sql
+-- ROLLBACK for 271_verification_security_hardening.sql
 -- =====================================================
 -- Run by hand, on staging first. Kept out of supabase/migrations/ so nothing
 -- that applies "every file in order" can run it by accident.
 --
 -- Removes the triggers and the identity_webhook_events table.
 --
--- DOES NOT narrow notifications_type_check. Section 6 of 253 only ADDED three
+-- DOES NOT narrow notifications_type_check. Section 6 of 271 only ADDED three
 -- values to the live list; taking them out again could reject rows that already
 -- use them, and nothing is gained by it. Leaving the wider list is harmless. If
 -- you really must remove them, delete or update any notifications whose type is

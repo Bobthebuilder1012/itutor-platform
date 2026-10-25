@@ -1,5 +1,5 @@
 -- =====================================================
--- ROLLBACK for 254_verification_v2_review.sql
+-- ROLLBACK for 272_verification_v2_review.sql
 -- =====================================================
 -- Run by hand. DESTROYS the decision audit table (take a copy first if it holds
 -- anything you need: the trigger refuses DELETE, but DROP TABLE is allowed).
@@ -32,7 +32,7 @@ ALTER TABLE public.tutor_verification_v2
   ADD CONSTRAINT tutor_verification_v2_status_check
   CHECK (status IN ('IN_PROGRESS', 'IN_REVIEW', 'VERIFIED', 'REJECTED', 'REVOKED'));
 
--- editable helper back to 252's definition
+-- editable helper back to 270's definition
 CREATE OR REPLACE FUNCTION public.tutor_v2_is_editable(p_tutor uuid)
 RETURNS boolean
 LANGUAGE sql

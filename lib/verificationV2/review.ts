@@ -1,7 +1,7 @@
 // Admin and reviewer decisions on v2 applications: approve, reject, revoke and
 // "reverification required". Every change goes through lib/verification/setStatus.ts
 // (so the allowed-transition map applies) and every decision is written to the
-// append-only audit table (migration 254).
+// append-only audit table (migration 272).
 //
 // What this never does: send an email or a notification, read an ID image (v2
 // holds none; the check is Stripe's), or change anything if a check fails. Both

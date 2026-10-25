@@ -1,5 +1,5 @@
 -- =====================================================
--- ROLLBACK for 257_identity_outcomes.sql
+-- ROLLBACK for 275_identity_outcomes.sql
 -- =====================================================
 -- Run by hand. Deletes the coverage-test data; export it first if you want it.
 

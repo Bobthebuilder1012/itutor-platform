@@ -1,8 +1,8 @@
 -- =====================================================
--- 257: IDENTITY OUTCOMES LOG
+-- 275: IDENTITY OUTCOMES LOG
 -- =====================================================
--- WRITTEN, NOT APPLIED. Rollback: supabase/rollbacks/257_identity_outcomes_rollback.sql
--- Depends on 256.
+-- WRITTEN, NOT APPLIED. Rollback: supabase/rollbacks/275_identity_outcomes_rollback.sql
+-- Depends on 274.
 --
 -- One row per FINISHED identity attempt (verified, retryable_failure,
 -- not_supported, consent_declined, canceled), so the coverage test

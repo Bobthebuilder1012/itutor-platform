@@ -6,7 +6,7 @@
 
 ## What gets recorded
 
-Every finished attempt is written to `identity_outcomes` (migration 257) with: provider, document country (the one the teacher picked), document type (when the provider returns it), neutral outcome, neutral reason, the provider's raw code, attempt number and seconds taken. It holds **no names, ID numbers or images**. Cost is not in the database: take it from each provider's invoice or price list.
+Every finished attempt is written to `identity_outcomes` (migration 275) with: provider, document country (the one the teacher picked), document type (when the provider returns it), neutral outcome, neutral reason, the provider's raw code, attempt number and seconds taken. It holds **no names, ID numbers or images**. Cost is not in the database: take it from each provider's invoice or price list.
 
 Use **one test account per physical document** (so its attempts group together), and record the document's *version* (old or new design, issue year) in the sheet, since the database does not store it.
 

@@ -1,5 +1,5 @@
 -- =====================================================
--- ROLLBACK for 255_verification_v2_redaction_deletion.sql
+-- ROLLBACK for 273_verification_v2_redaction_deletion.sql
 -- =====================================================
 -- Run by hand. Credentials whose proof was deleted have no proof_url or
 -- proof_path, so they would violate the original shape CHECK. The original CHECK

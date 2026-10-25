@@ -1,9 +1,9 @@
 -- =====================================================
--- 256: PROVIDER-AGNOSTIC IDENTITY VERIFICATION
+-- 274: PROVIDER-AGNOSTIC IDENTITY VERIFICATION
 -- =====================================================
 -- WRITTEN, NOT APPLIED. Apply to a local or staging database only.
--- Rollback: supabase/rollbacks/256_identity_providers_rollback.sql
--- Depends on 252-255. ADDITIVE: nothing is dropped and the old Stripe columns
+-- Rollback: supabase/rollbacks/274_identity_providers_rollback.sql
+-- Depends on 270-273. ADDITIVE: nothing is dropped and the old Stripe columns
 -- (stripe_identity_session_id, identity_session_history) keep working; new code
 -- writes the provider columns and, for Stripe, the old ones too.
 --

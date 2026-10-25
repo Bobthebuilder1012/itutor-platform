@@ -1,8 +1,8 @@
 -- =====================================================
--- 255: VERIFICATION V2 REDACTION AND FILE DELETION
+-- 273: VERIFICATION V2 REDACTION AND FILE DELETION
 -- =====================================================
--- WRITTEN, NOT APPLIED. Rollback: supabase/rollbacks/255_verification_v2_redaction_deletion_rollback.sql
--- Depends on 252-254.
+-- WRITTEN, NOT APPLIED. Rollback: supabase/rollbacks/273_verification_v2_redaction_deletion_rollback.sql
+-- Depends on 270-272.
 --
 --  1. identity_redacted_at: when the Stripe Identity sessions were redacted, so a
 --     retry sweep can find the ones that still hold ID data.

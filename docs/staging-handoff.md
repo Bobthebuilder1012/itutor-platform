@@ -1,67 +1,84 @@
 # Teacher verification v2: staging handoff
 
-Status: **prepared, nothing pushed, nothing deployed, no database touched.** Branch: `verification-stripe-identity`. Everything below is a plan for a person to carry out.
+Status: **prepared, nothing pushed, nothing deployed, no database touched.** Branch: `verification-staging-clean` (local only; the older `verification-stripe-identity` still carries the 7 unrelated commits and must not be used for the PR). Everything below is a plan for a person to carry out.
 
-Contents: 1 Branch scope, 2 Migrations, 3 File-deletion sweep, 4 Environment, 5 Order of work, 6 Staging test script, 7 Rollback.
+Contents: 1 The clean branch, 2 Migrations, 3 File-deletion sweep, 4 Environment, 5 Order of work, 6 Staging test script, 7 Rollback.
 
 ---
 
-## 1. Branch scope (read this before anything else)
+## 1. The clean branch (done locally)
 
-`origin/staging` was fetched read-only on 2026-10-24 (tip `1edcc521`, 2026-10-21). The branch's merge base with it is `e11e3d4a`, and **staging has 79 commits this branch has never seen**.
+Local branch **`verification-staging-clean`**, created from `origin/staging` at `1edcc521` (fetched 2026-10-24; staging's highest migration is **269**). It holds only the 18 verification commits, the staging prep commit and the renumbering commit below. The 7 unrelated commits (waitlist expiry cron, social preview logo, parent paid-class checkout, reminder claim failures, the `feat/physical-classes-rework` merge, cash-payment removal, the Schedule picker) are **not** on it, and neither is `app/api/payments/stripe/webhook/route.ts`.
 
-| | Count |
+It was built in a separate worktree (`C:Usersambaitutor-clean`) so your working copy and its uncommitted payments file were never touched. To work on it: `cd C:Usersambaitutor-clean`, or `git switch verification-staging-clean` in the main folder once `app/api/payments/stripe/webhook/route.ts` is committed or set aside. Nothing is pushed.
+
+Commits, oldest first (hashes are the cherry-picked copies):
+
+| Commit | Subject |
 |---|---|
-| Commits in `origin/staging..HEAD` | **25** (before the prep commit) |
-| of which verification and identity | **18** (`92e1860e` through `72bc31bb`) |
-| of which **unrelated** | **7** (below) |
-| Files changed by the 18 verification commits | 155 (+16.4k lines) |
-| Files changed by the 7 unrelated commits | 21 (no overlap with the 155) |
+| `054ea755` | chore(test): add vitest and an in-memory fake database |
+| `d0af72f7` | feat(verification): allowed-transition map and one status-change function |
+| `f501a888` | feat(verification): v2 teacher flow behind VERIFICATION_V2_ENABLED |
+| `b1feaf46` | feat(verification): separate Stripe Identity webhook with its own signing secret |
+| `af0f99f5` | fix(verification): route every status write through the map, authenticate OCR, lock revoked teachers |
+| `541a6893` | fix(verification): compare tutor_verification_status with one helper, not lowercase 'verified' |
+| `13e4f65c` | feat(verification): migration 253 security hardening (not applied) |
+| `0bc2dd9f` | feat(verification): Stripe session redaction, file deletion and retention sweep |
+| `8d6d1703` | feat(verification): admin review, reverification-required status and decision audit |
+| `f349b86c` | feat(verification): three-label badges and click panel, nav links, behind the flag |
+| `81b8ee12` | feat(identity): provider-agnostic identity layer (stripe, didit), neutral outcomes, fallback chain |
+| `13c86065` | refactor(verification): split badge, panel, admin queue and review into presentational parts |
+| `91da05f8` | feat(identity): veriff provider, total attempt cap across providers, identity_outcomes log |
+| `d7dffc26` | feat(verification): dev-only states gallery, local-only seed script, migration check harness |
+| `c59a07dc` | docs+scripts: local testing guide, identity coverage scorecard, guarded migration apply script |
+| `191960ef` | docs: list the verification v2 environment variable names in .env.example |
+| `71aa105e` | test: screenshots of the dev states gallery at 375px and 1280px, screenshot script, email note in the guide |
+| `20d578da` | feat(identity): didit primary, stripe backup via IDENTITY_PRIMARY_PROVIDER; didit X-Signature-V2 and rotation headers |
+| `ae368e48` | chore(verification): staging handoff, combined apply/rollback/pre-check SQL, daily cleanup schedule with tests |
+| (last) | chore(verification): renumber migrations 252-257 to 270-275 |
 
-Do not read `git diff origin/staging..HEAD` (356 files, 24k deletions): it is a tree diff and mostly shows staging's own newer work as "deleted".
+Conflicts met while bringing them over, and the resolution (staging's code kept in every case):
+- `components/marketplace/ClassCard.tsx`: staging added WhatsApp and Google Classroom icons beside the subject line; we added the badges above it. Kept staging's block unchanged and put our two badge lines above it.
+- `components/tutor/TutorShell.tsx`, imports: staging added `Send`, we added `ShieldCheck`. Kept both.
+- `components/tutor/TutorShell.tsx`, component head: staging added an `actions` slot with its doc comment. Kept staging's signature and comment exactly; added only our `VERIFICATION_V2_NAV` constant above them.
+- `vercel.json`: staging added two crons (`progress-class-levels`, `credits-nightly`). Kept both and appended our `verification-cleanup?apply=1` entry (17 crons in total).
+- `package.json` and `package-lock.json` merged without a conflict; `npm ci` accepts the merged lock. The only changes against staging are the `test` script and the `vitest` dev dependency.
 
-**The 7 unrelated commits** (they arrived when `dev` was fast-forwarded to `union-staging-payment`; verification does not depend on them):
-`07b9a870` waitlist expiry cron, `d3f41753` social preview logo, `537683a8` parent paid-class checkout, `383cd95e` reminder claim failures, `d53ddd94` merge of `feat/physical-classes-rework`, `1a3c47e7` remove cash payments, `a2dbe051` remove the Schedule picker.
+Not in the verification set, deliberately left alone: everything else staging changed.
 
-Some of those files (group payments, `process-subscriptions`, `app/layout.tsx`, class pages) were also changed on staging since the merge base, so **opening a PR from this branch as it is would drag the seven in and risk conflicts. Do not.**
+### Migration numbers (renumbered)
 
-The verification commits also touch 11 files outside the feature, all to place badges or delete files on account deletion: `app/api/delete-account/route.ts`, `app/classes/page.tsx`, `app/student/tutors/[tutorId]/page.tsx`, `app/tutors/[tutorId]/page.tsx`, `components/DashboardLayout.tsx`, `components/UniversalSearchBar.tsx`, `components/classes/ClassCard.tsx`, `components/marketplace/ClassCard.tsx`, `components/tutor/TutorShell.tsx`, `lib/finder/cardData.ts`, `lib/finder/supply.ts`. Six of them (`app/student/tutors/[tutorId]/page.tsx`, `app/tutors/[tutorId]/page.tsx`, `components/DashboardLayout.tsx`, `components/marketplace/ClassCard.tsx`, `components/tutor/TutorShell.tsx`, `lib/finder/supply.ts`) **and** `package.json` and `package-lock.json` changed on staging too, so expect conflicts there.
+| Was | Now | File |
+|---|---|---|
+| 252 | **270** | `teacher_verification_v2` |
+| 253 | **271** | `verification_security_hardening` |
+| 254 | **272** | `verification_v2_review` |
+| 255 | **273** | `verification_v2_redaction_deletion` |
+| 256 | **274** | `identity_providers` |
+| 257 | **275** | `identity_outcomes` |
 
-### How to make a clean branch (NOT done yet)
-
-```
-git fetch origin
-git switch -c verification-staging origin/staging
-git cherry-pick 92e1860e^..verification-stripe-identity     # the 18 verification commits plus the prep commit(s); NOT the 7
-```
-
-Resolve conflicts as you meet them:
-- `package.json` / `package-lock.json`: keep staging's file, re-add only `"test": "vitest run"` and the `vitest` dev dependency, then `npm install`.
-- The six UI files: keep staging's version and re-apply the small badge addition by hand (look at the commit's diff for that file).
-- After every conflict: `npx tsc --noEmit -p .` and `npm test`.
-
-**Renumber the migrations on the clean branch.** Staging already has files numbered 252 (`252_quizzes`), 253, 254, 255, 257, and goes up to **269**. Ours must not share those numbers. Suggested: 252 to 257 become **270 to 275** (migrations and `supabase/rollbacks/`), then update the file names in `scripts/verify-verification-migrations.mjs`, `scripts/build-verification-sql.mjs` and `docs/VERIFICATION_V2_TEST_PLAN.md`. The generated SQL in `docs/` does not depend on file numbers, so it works either way if you paste it into the SQL Editor; the numbers matter only to tools such as `scripts/apply-staging-migrations.ts`.
+Both `supabase/migrations/` and `supabase/rollbacks/` were renamed, and every reference updated: the SQL file headers, `scripts/verify-verification-migrations.mjs`, `scripts/build-verification-sql.mjs`, `scripts/seed-verification-test-users.mjs`, `lib/verificationV2/review.ts`, `lib/verificationV2/fileDeletion.ts` and the docs. The generated SQL in `docs/` was rebuilt. They do not depend on file numbers, so they work the same when pasted into the SQL Editor.
 
 ---
 
-## 2. Migrations 252 to 257
+## 2. Migrations 270 to 275
 
 Files (generated by `node scripts/build-verification-sql.mjs`, do not edit by hand):
 
 | File | What it is |
 |---|---|
 | `docs/pre-check-notifications.sql` | **Read-only.** Seven SELECTs. Run first, one block at a time. |
-| `docs/apply-verification-migrations.sql` | 252 to 257 in **one transaction**. All or nothing. Safe to run twice. |
-| `docs/rollback-verification-migrations.sql` | 257 down to 252 in one transaction. **Destructive** (drops the v2 tables). |
+| `docs/apply-verification-migrations.sql` | 270 to 275 in **one transaction**. All or nothing. Safe to run twice. |
+| `docs/rollback-verification-migrations.sql` | 275 down to 270 in one transaction. **Destructive** (drops the v2 tables). |
 
-Checked offline on an embedded Postgres (`node scripts/verify-combined-migrations.mjs`, 18 checks): apply works on a clean database and twice in a row; a missing prerequisite function or an unrecognised notifications constraint aborts with nothing left behind; rollback removes everything; apply works again afterwards; the pre-check runs and only selects. It has **not** been run on a real Supabase project.
+Checked offline on an embedded Postgres (`node scripts/verify-combined-migrations.mjs`, 18 checks, and `node scripts/verify-verification-migrations.mjs`, 87 checks): apply works on a clean database and twice in a row; a missing prerequisite function or an unrecognised notifications constraint aborts with nothing left behind; rollback removes everything; apply works again afterwards; the pre-check runs and only selects. It has **not** been run on a real Supabase project. The embedded checks need `npm install --no-save @electric-sql/pglite`; run that **after** `npm run build`, because it can disturb `node_modules`.
 
 ### Risks (the apply is not purely additive)
 1. **Notifications constraint:** `notifications_type_check` is dropped and re-added with 3 new values, read from the live definition. If its shape is unexpected the apply stops (nothing changes). The pre-check shows it first.
-2. **Profiles constraint:** `profiles_tutor_verification_status_check` is dropped and re-added twice (252, then 254). Postgres re-checks every profile row; an old status value outside the list makes the apply fail, safely. Pre-check query 4 finds them.
+2. **Profiles constraint:** `profiles_tutor_verification_status_check` is dropped and re-added twice (270, then 272). Postgres re-checks every profile row; an old status value outside the list makes the apply fail, safely. Pre-check query 4 finds them.
 3. **Behaviour change on three existing tables:** new triggers restrict tutors to `file_path` on `tutor_verification_requests`, `is_public` on `tutor_verified_subjects`, and block users writing `is_reviewer` / `tutor_verified_at` on `profiles`. Any existing screen or script that wrote other columns as the tutor will now get a permission error.
 4. **Depends on 217:** `is_privileged_request()` and `is_admin_or_reviewer(uuid)` must exist (pre-check 2).
-5. **Number clash:** staging's own 252 to 257 files are different migrations. Names of objects do not clash on the offline check; pre-check 5 confirms on staging.
+5. **Numbers:** 270 to 275 follow staging's own 269, so the file numbers no longer clash. Object names do not clash on the offline check; pre-check 5 confirms on staging. If staging gains more migrations before you merge, renumber again.
 6. **Rollback is destructive and has side effects:** it deletes all v2 data, and sets profiles that say REVOKED or REVERIFICATION_REQUIRED to REJECTED. It leaves the notifications constraint widened and the private storage bucket in place (a last, commented line deletes the bucket; Supabase may refuse a direct delete, use Dashboard > Storage).
 7. **Not applied anywhere**, including production. Do not run any of this on `nfkrfciozjxrodkusrhh` (production).
 
@@ -112,7 +129,7 @@ Webhook endpoints to register in each provider's **staging/sandbox** console:
 
 ## 5. Order of work
 
-1. Make the clean branch (section 1). Run `npm test`, `npx tsc --noEmit -p .`, `npm run build` on it.
+1. The clean branch exists (section 1). Re-run `git fetch origin`; if staging has moved, rebase it and renumber again if staging took 270 or higher. Run `npm test`, `npx tsc --noEmit -p .`, `npm run build`.
 2. Open the PR into `staging` yourself and let CI/Vercel build a preview. (This build did none of that.)
 3. Staging Supabase SQL Editor: confirm the project ref is **not** `nfkrfciozjxrodkusrhh`. Run `docs/pre-check-notifications.sql` block by block and match every "WHAT YOU WANT".
 4. Run `docs/apply-verification-migrations.sql` once. Expect "Success" and a NOTICE line about notifications.

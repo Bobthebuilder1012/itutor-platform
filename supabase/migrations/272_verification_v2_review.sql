@@ -1,9 +1,9 @@
 -- =====================================================
--- 254: VERIFICATION V2 REVIEW (admin review, reverification, audit)
+-- 272: VERIFICATION V2 REVIEW (admin review, reverification, audit)
 -- =====================================================
 -- WRITTEN, NOT APPLIED. Apply to a local or staging database only, never
--- production from here. Rollback: supabase/rollbacks/254_verification_v2_review_rollback.sql
--- Depends on 252 and 253.
+-- production from here. Rollback: supabase/rollbacks/272_verification_v2_review_rollback.sql
+-- Depends on 270 and 271.
 --
 --  1. REVERIFICATION_REQUIRED becomes a status on profiles AND on
 --     tutor_verification_v2. It is distinct from REJECTED (a decision on an

@@ -158,7 +158,7 @@ A wrong signature must return `400`. Didit's webhook is **not** trusted for the 
 
 ## What was not verified (do these by hand)
 
-- **A full run of all ~257 migrations on an empty database.** No Docker here. Migrations 252 to 257 and their rollbacks were run in an embedded Postgres with Supabase stubs (87 checks pass); the older ones were not replayed.
+- **A full run of all ~275 migrations on an empty database.** No Docker here. Migrations 270 to 275 and their rollbacks were run in an embedded Postgres with Supabase stubs (87 checks pass); the older ones were not replayed.
 - **Anything that needs a real Supabase, Stripe, Didit or Veriff account:** logging in, the hosted pages, real webhook delivery, Storage upload and deletion, the real Stripe `redact` call. The code is unit-tested against fakes and signed fixtures only.
 - **Veriff's base URL, Didit's unsupported-document code, Veriff's age-code order, Veriff's delete being switched on** are documented TODOs in `lib/identity/providers/*.ts` and `lib/identity/mapping.ts`.
 - **Real passports and ID cards** from Trinidad and Tobago, Guyana and Barbados: see `docs/IDENTITY_COVERAGE_TEST.md`. Stripe test mode cannot prove country coverage.

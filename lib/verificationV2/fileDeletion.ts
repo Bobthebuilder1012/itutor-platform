@@ -8,7 +8,7 @@
 //
 // What "delete" covers beyond the files: OCR text and extracted fields that came
 // from a document are cleared, and credentials keep their claim but lose the
-// proof (proof_deleted_at, migration 255) so what was reviewed stays on record.
+// proof (proof_deleted_at, migration 273) so what was reviewed stays on record.
 
 import { getServiceClient } from '@/lib/supabase/server';
 import type { Db } from '@/lib/verification/setStatus';

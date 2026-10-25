@@ -22,7 +22,7 @@ WHERE conrelid = 'public.notifications'::regclass
   AND conname = 'notifications_type_check';
 
 -- 2. FUNCTIONS THE MIGRATIONS CALL (from migration 217)
---    WHAT YOU WANT: 2 rows. If either is missing, STOP: 253 would fail.
+--    WHAT YOU WANT: 2 rows. If either is missing, STOP: 271 would fail.
 SELECT p.proname, pg_get_function_identity_arguments(p.oid) AS args
 FROM pg_proc p
 JOIN pg_namespace n ON n.oid = p.pronamespace
@@ -56,8 +56,8 @@ WHERE tutor_verification_status IS NOT NULL
 GROUP BY 1;
 
 -- 5. NOTHING OF THE NEW FEATURE EXISTS YET, AND NO NAME CLASHES
---    WHAT YOU WANT: zero rows. (Staging already uses file numbers 252 to 257 for
---    other work; this checks the OBJECT names do not clash.) Rows here mean part
+--    WHAT YOU WANT: zero rows. (Our files are numbered 270 to 275, after staging's
+--    own 269; this checks the OBJECT names do not clash.) Rows here mean part
 --    of this was applied before, or something else owns the name: read before going on.
 SELECT 'table' AS kind, table_name AS name
 FROM information_schema.tables

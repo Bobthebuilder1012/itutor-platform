@@ -1,5 +1,5 @@
 -- =====================================================
--- ROLLBACK for 252_teacher_verification_v2.sql
+-- ROLLBACK for 270_teacher_verification_v2.sql
 -- =====================================================
 -- Kept out of supabase/migrations/ so nothing that applies "every file in order"
 -- can run it by accident. Run by hand, on staging first.

@@ -13,7 +13,7 @@
 // Creates (idempotent, safe to re-run):
 //   admin, reviewer, student, parent, and tutors in EVERY verification state, with
 //   sample one-to-one listings and classes so the badges show everywhere.
-// Needs migrations 252-257 applied to that database first.
+// Needs migrations 270-275 applied to that database first.
 
 import { readFileSync, existsSync } from 'fs';
 import { createClient } from '@supabase/supabase-js';

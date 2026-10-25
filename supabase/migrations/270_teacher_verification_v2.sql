@@ -1,8 +1,8 @@
 -- =====================================================
--- 252: TEACHER VERIFICATION V2
+-- 270: TEACHER VERIFICATION V2
 -- =====================================================
 -- Behind VERIFICATION_V2_ENABLED. Written, NOT applied. Apply to staging first.
--- Rollback: supabase/rollbacks/252_teacher_verification_v2_rollback.sql
+-- Rollback: supabase/rollbacks/270_teacher_verification_v2_rollback.sql
 --
 -- WHY NEW TABLES AND NOT THE OLD ONES
 --   tutor_verification_requests is one row per uploaded FILE with OCR columns

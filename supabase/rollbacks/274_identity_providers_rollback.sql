@@ -1,5 +1,5 @@
 -- =====================================================
--- ROLLBACK for 256_identity_providers.sql
+-- ROLLBACK for 274_identity_providers.sql
 -- =====================================================
 -- Run by hand. Statuses go back to Stripe's names. Teachers who were being
 -- checked by Didit or the manual route lose that information (the provider

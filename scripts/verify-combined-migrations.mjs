@@ -8,7 +8,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { readFileSync } from 'fs';
 
 const read = (p) => readFileSync(`${process.cwd()}/${p}`, 'utf8');
-const src = read('scripts/verify-verification-migrations.mjs');
+const src = read('scripts/verify-verification-migrations.mjs').split(String.fromCharCode(13)).join(''); // checkouts may be CRLF
 const bootstrap = src.slice(src.indexOf('const bootstrap = `') + 'const bootstrap = `'.length, src.indexOf('`;\nlet err'));
 const prereq = [...src.slice(src.indexOf('const prereq = ['), src.indexOf('];', src.indexOf('const prereq = [')))
   .matchAll(/'(supabase\/migrations\/[^']+)'/g)].map((m) => m[1]);
