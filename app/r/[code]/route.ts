@@ -125,7 +125,9 @@ export async function GET(
   { params }: { params: { code: string } }
 ) {
   const { code: rawCode } = await params;
-  const code = (rawCode ?? '').trim();
+  // Reassigned below: a resolved referral replaces this with its canonical
+  // code, which is what the attribution and the analytics event then carry.
+  let code = (rawCode ?? '').trim();
   const url = request.nextUrl;
 
   const requestedTarget = safeRelativePath(url.searchParams.get('to'));
@@ -145,7 +147,6 @@ export async function GET(
   } else if (referral) {
     code = referral.code;
     resolvedKind = 'referral';
-    resolvedPlatform = 'referral';
     resolution = 'resolved';
     referralCode = referral.enabled ? referral.code : null;
   } else {
