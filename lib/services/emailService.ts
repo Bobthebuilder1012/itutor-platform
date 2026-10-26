@@ -19,6 +19,19 @@ import { getCustomerIoEmailConfig, sendViaCustomerIo } from '@/lib/email/provide
  */
 type EmailProvider = 'resend' | 'customerio';
 
+/**
+ * Whether EMAIL_PROVIDER names a provider explicitly.
+ *
+ * This is the difference between "this environment has no email set up" and
+ * "this environment asked for a provider and the credential is missing". The
+ * first is a quiet no-op by design. The second is a misconfiguration, and
+ * reporting it as a successful send is how it goes unnoticed — see the note
+ * on the unconfigured paths in sendEmail.
+ */
+function isProviderExplicit(): boolean {
+  return Boolean(process.env.EMAIL_PROVIDER?.trim());
+}
+
 function getProvider(): EmailProvider {
   const raw = process.env.EMAIL_PROVIDER?.trim();
   if (!raw) return 'resend';
@@ -133,19 +146,41 @@ export async function sendEmail({
 
   if (getProvider() === 'customerio') {
     const config = getCustomerIoEmailConfig();
-    // Mirrors the Resend no-key path below: unconfigured is a no-op, not a
-    // crash, so an environment without credentials stays quiet.
+    // A FAILURE, not a quiet skip. Customer.io can only be reached by naming
+    // it in EMAIL_PROVIDER, so arriving here means the environment asked for a
+    // provider whose credential is absent. Reporting that as a successful send
+    // is actively destructive: send-onboarding-emails advances a user's
+    // onboarding_stage and writes a 'success' log on result.success, so a
+    // no-op "success" consumes the stage and the email is never retried. That
+    // happened on production on 2026-10-26 — three users lost a stage each in
+    // the first cron run after the switch went live.
     if (!config) {
-      console.log(`[EMAIL SKIPPED — no CUSTOMERIO_APP_API_KEY] to=${to} subject=${subject}`);
-      return { success: true, messageId: 'disabled' };
+      console.error(`[EMAIL FAILED — no CUSTOMERIO_APP_API_KEY] to=${to} subject=${subject}`);
+      return {
+        success: false,
+        error:
+          'EMAIL_PROVIDER is customerio but CUSTOMERIO_APP_API_KEY is not set. ' +
+          'Note that a Vercel team-level Shared variable only reaches a project ' +
+          'that is in its project list.',
+      };
     }
     return sendViaCustomerIo({ to, from, subject, html, text }, config);
   }
 
   const resend = getResend();
-  // No RESEND_API_KEY configured (e.g. staging without email set up) → no-op,
-  // so nothing is sent by accident. Sending is enabled the moment a key exists.
+  // No RESEND_API_KEY configured. Quiet no-op ONLY when nothing named a
+  // provider — that is the long-standing "this environment has no email set
+  // up" case, and callers rely on it. If EMAIL_PROVIDER explicitly says
+  // resend, the missing key is a misconfiguration and must be reported as
+  // one, for the same reason as the Customer.io path above.
   if (!resend) {
+    if (isProviderExplicit()) {
+      console.error(`[EMAIL FAILED — no RESEND_API_KEY] to=${to} subject=${subject}`);
+      return {
+        success: false,
+        error: 'EMAIL_PROVIDER is resend but RESEND_API_KEY is not set.',
+      };
+    }
     console.log(`[EMAIL SKIPPED — no RESEND_API_KEY] to=${to} subject=${subject}`);
     return { success: true, messageId: 'disabled' };
   }
