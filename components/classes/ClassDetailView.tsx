@@ -123,6 +123,8 @@ export type GroupData = {
   enrolled: boolean;
   memberStatus: string | null;
   paymentPending: boolean;
+  /** When a card hold lapses. Null for a cash hold, which never lapses. */
+  paymentPendingExpiresAt?: string | null;
   parent_feedback_price: number | null;
   active_promotion: { id: string; kind: string; discount: number; student_cap: number | null; duration_days: number | null } | null;
   sessions: SessionRow[];
@@ -443,13 +445,42 @@ export function Detail({
   //
   // A full class is the exception. The waitlist enrols nobody and charges
   // nothing, so there is nothing for a parent to approve yet.
+  // ── Is the payment hold still live? ──────────────────────────────────────
+  // The server decides this when the page loads, but a seat reservation is a
+  // 30-minute countdown and this page can sit open for longer than it. Ticking
+  // locally means the moment the hold lapses the CTA stops claiming a seat,
+  // without waiting for a refetch — the whole point of the fix being that the
+  // page must never say "your seat is held" when it is not.
+  //
+  // A null expiry is a CASH hold. Those have no timer on purpose, so they are
+  // never counted down and never expire here.
+  // Starts null and is filled on mount, deliberately: reading the clock during
+  // render would run on the server too, and a count rendered at server time and
+  // again at client time can differ by a minute — a hydration mismatch. Until
+  // it is known, the server's own answer stands.
+  const holdExpiresAt = group.paymentPendingExpiresAt ?? null;
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    if (!group.paymentPending || !holdExpiresAt) return;
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 15_000);
+    return () => clearInterval(id);
+  }, [group.paymentPending, holdExpiresAt]);
+
+  const holdMsLeft =
+    holdExpiresAt && now !== null ? new Date(holdExpiresAt).getTime() - now : null;
+  const paymentPending = group.paymentPending && (holdMsLeft === null || holdMsLeft > 0);
+  // Rounded up, so a hold with 30 seconds left reads "1 minute" rather than
+  // "0 minutes", which would look like it had already gone.
+  const holdMinutesLeft = holdMsLeft !== null && holdMsLeft > 0 ? Math.ceil(holdMsLeft / 60_000) : null;
+
   const gated = Boolean(parentGate?.needsParentApproval);
   const awaitingParent = gated && Boolean(parentGate?.pending);
   const parentLabel = parentGate?.parentName ?? 'your parent';
 
   const ctaLabel = group.enrolled ? 'Open class'
     : isPending ? 'Request pending'
-    : group.paymentPending ? 'Complete payment'
+    : paymentPending ? 'Complete payment'
     : isFull ? 'Join waitlist'
     : awaitingParent ? 'Waiting on your parent'
     : gated ? 'Ask parent to enrol'
@@ -458,7 +489,14 @@ export function Detail({
     : 'Join class';
   const ctaCaption = group.enrolled ? "You're enrolled"
     : isPending ? 'Awaiting tutor approval'
-    : group.paymentPending ? 'Your seat is held until payment completes'
+    : paymentPending
+      ? holdMinutesLeft !== null
+        ? `Your seat is held for ${holdMinutesLeft} more minute${holdMinutesLeft === 1 ? '' : 's'}`
+        : holdExpiresAt
+          // Card hold, clock not read yet (first paint). Honest without a number.
+          ? 'Your seat is held until payment completes'
+          // Cash: a real hold with no deadline, so none is invented.
+          : 'Your place is held until you pay your tutor'
     : isFull ? 'Class full · join the waitlist'
     : awaitingParent ? `${parentLabel} has been asked · no place is being held`
     : gated ? `${parentLabel} approves this · you will not be asked to pay`
@@ -866,7 +904,7 @@ export function Detail({
                   <button onClick={handleCta} disabled={ctaDisabled}
                     className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-2xl bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-deep disabled:opacity-60">
                     {isPending ? 'Request pending'
-                      : group.paymentPending ? 'Complete payment'
+                      : paymentPending ? 'Complete payment'
                       : isFull ? 'Join the waitlist'
                       : awaitingParent ? 'Waiting on your parent'
                       : gated ? 'Ask parent to enrol'

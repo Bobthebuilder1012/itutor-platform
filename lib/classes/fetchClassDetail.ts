@@ -55,6 +55,8 @@ export async function fetchClassDetail(
   const enrolled = !!vm?.enrolled;
   const memberStatus: string | null = vm?.member_status ?? null;
   const paymentPending = !!vm?.payment_pending;
+  // Null for a cash hold, which has no timer by design.
+  const paymentPendingExpiresAt: string | null = vm?.payment_pending_expires_at ?? null;
   const securedState: { releaseDate: string | null } | null = vm?.secured
     ? { releaseDate: vm.release_date ?? null }
     : null;
@@ -132,6 +134,7 @@ export async function fetchClassDetail(
     enrolled,
     memberStatus,
     paymentPending,
+    paymentPendingExpiresAt,
     parent_feedback_price: g.parent_feedback_price ?? null,
     active_promotion: g.active_promotion ?? null,
     sessions,

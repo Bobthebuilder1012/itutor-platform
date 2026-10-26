@@ -293,6 +293,15 @@ export async function GET(req: NextRequest, { params }: Params) {
     let viewerLapsedReleaseDate: string | null = null;
     /** Which seat this viewer holds. Null before 242, or when not enrolled. */
     let viewerSeatType: string | null = null;
+    /**
+     * When the viewer's own PENDING_PAYMENT hold runs out.
+     *
+     * NULL is not "no hold" — it is a CASH hold, which deliberately has no
+     * timer because the student pays the tutor in person days later. See the
+     * header of groups/[groupId]/cash-hold. So this is only ever compared
+     * when it is non-null; a null is left alone.
+     */
+    let viewerPendingExpiresAt: string | null = null;
     // Guarded: this page is now browsable by signed-out visitors, who have no
     // membership to resolve. Unguarded, the merge of anonymous access with this
     // block would have dereferenced a null user on every public class view.
@@ -302,7 +311,13 @@ export async function GET(req: NextRequest, { params }: Params) {
       // look like a stranger to their own class page.
       let enrolRows: any[] | null = null;
       let enrolErr: any = null;
-      for (const cols of ['status, release_date, seat_type', 'status, release_date']) {
+      // pending_payment_expires_at arrives in migration 159, long before
+      // seat_type's 242, so any database that has the latter has the former.
+      for (const cols of [
+        'status, release_date, seat_type, pending_payment_expires_at',
+        'status, release_date, pending_payment_expires_at',
+        'status, release_date',
+      ]) {
         const res = await service
           .from('group_enrollments')
           .select(cols)
@@ -344,6 +359,10 @@ export async function GET(req: NextRequest, { params }: Params) {
       // room seat and rejoined online has two rows and only one live seat.
       viewerSeatType =
         (enrolRows ?? []).find((r: any) => String(r.status) === viewerEnrollmentStatus)?.seat_type ?? null;
+
+      viewerPendingExpiresAt =
+        (enrolRows ?? []).find((r: any) => String(r.status) === 'PENDING_PAYMENT')
+          ?.pending_payment_expires_at ?? null;
     }
 
     const viewerMemberStatus = currentUserMembership?.status ? String(currentUserMembership.status) : null;
@@ -355,7 +374,24 @@ export async function GET(req: NextRequest, { params }: Params) {
       enrollment_status: viewerEnrollmentStatus,
       enrolled: viewerEnrolled,
       pending_approval: viewerMemberStatus === 'pending',
-      payment_pending: !viewerEnrolled && viewerEnrollmentStatus === 'PENDING_PAYMENT',
+      /**
+       * A LIVE hold, not merely a PENDING_PAYMENT row.
+       *
+       * This used to report the status alone, which told a student their seat
+       * was held long after the 30-minute reservation had lapsed and the seat
+       * had gone back into the pool — the capacity query below already filters
+       * on pending_payment_expires_at, so the two disagreed, and the class
+       * page was the one that was wrong. Two students could each be told the
+       * same seat was theirs.
+       *
+       * A null expiry is a cash hold and has no timer, so it stays pending.
+       */
+      payment_pending:
+        !viewerEnrolled &&
+        viewerEnrollmentStatus === 'PENDING_PAYMENT' &&
+        (viewerPendingExpiresAt === null || new Date(viewerPendingExpiresAt) > new Date()),
+      /** When that hold lapses. Null for a cash hold, which never does. */
+      payment_pending_expires_at: viewerPendingExpiresAt,
       /** Place held by an up-front first-month payment (Secure your spot). */
       secured: viewerEnrollmentStatus === 'SECURED',
       release_date: viewerReleaseDate,
