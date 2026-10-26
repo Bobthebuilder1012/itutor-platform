@@ -178,6 +178,12 @@ export async function applyCreditsToRenewal(params: {
     baseTtd,
     balanceTtd: wallet?.available ?? 0,
     requestedTtd: params.requestedTtd,
+    // Required by the quote, but a renewal never part-pays: the refusal below
+    // demands full coverage, so the minimum-card-charge arithmetic can never
+    // be what decides this. A renewal with credits is a TT$0 invoice on a card
+    // that is already saved, and partial renewals are NOT part of restoring
+    // the subsidy — that is scenario B only.
+    minCashChargeTtd: settings.min_cash_charge_ttd,
   });
   if (!quote.fullCoverage) {
     return {

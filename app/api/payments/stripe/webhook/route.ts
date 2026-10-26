@@ -518,10 +518,12 @@ async function handleIntentSucceeded(
   // this activates them. Reuses handleSubscriptionPayment, the same
   // function the LuniPay webhook calls, so activation logic exists once.
   //
-  // 'credit_month' PaymentIntents came from an earlier design where credits
-  // could part-pay a month. Credits now pay a month in full with no Stripe
-  // call, so none are created; the branch stays so any already in flight
-  // still settle.
+  // 'credit_month' PaymentIntents are the card half of a SUBSIDISED month:
+  // credits pay part of it, this intent pays the rest. They are created only
+  // when CREDIT_SUBSIDY_ENABLED is on; with it off, credits buy a whole month
+  // with no Stripe call and none reach here. Either way they settle through
+  // the same handleSubscriptionPayment as an ordinary cycle, so a subsidised
+  // month activates by exactly the path a paid one does.
   // -----------------------------------------------------------
   if (intent.metadata?.kind === 'group_subscription' || intent.metadata?.kind === 'credit_month') {
     const subscriptionPaymentId = intent.metadata?.payment_id;

@@ -45,7 +45,7 @@ import { classCapacityDisplay } from '@/lib/utils/classCapacity';
 import TutorCredentials from '@/components/TutorCredentials';
 import CheckoutCreditsChoice, { type CreditChoice } from '@/components/credits/CheckoutCreditsChoice';
 import BalanceChip from '@/components/credits/BalanceChip';
-import { invalidateCredits } from '@/lib/credits/useCredits';
+import { invalidateCredits, useCredits } from '@/lib/credits/useCredits';
 
 // 'cash-held' is its own outcome rather than 'joined': the seat is held but
 // nothing is paid, and telling someone they have joined when the tutor can
@@ -1428,6 +1428,11 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent, p
   // iTutor credits (migration 268): only on a card purchase of a paid class
   // with a seat — not a preorder, a cash request or a parent's ask.
   const [creditChoice, setCreditChoice] = useState<CreditChoice>('none');
+  // Read for the credit-month offer below. 'lite' is the cheap shape: the
+  // balance only, no ledger or referral payload, because that is all this
+  // page needs to decide what to send.
+  const { data: creditData } = useCredits('lite');
+  const creditBalance = creditData?.wallet?.available ?? 0;
   const creditsOffered = price > 0 && !isFull && !gated && !cashChosen && !preorder;
   const usingCredits = creditsOffered ? creditChoice : 'none';
 
@@ -1511,12 +1516,21 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent, p
         const res = await fetch(`/api/groups/${group.id}/credit-month`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ seatType: chosenSeat }),
+          // The wallet balance is an OFFER, not an instruction. The server caps
+          // it at what the month allows and, when a card charge remains, walks
+          // it down until that charge clears the processor minimum — so sending
+          // the whole balance is safe and sending less would only ever buy less.
+          body: JSON.stringify({ seatType: chosenSeat, useCreditsTtd: creditBalance }),
         });
         const data = await res.json();
         if (data.parent_approval_required) { onSuccess('awaiting-parent'); return; }
         if (!res.ok) throw new Error(data.error || 'Could not use your credits. Please try again.');
         invalidateCredits();
+        // Credits covered part of the month: the rest is a card payment, and
+        // the seat is held by the PENDING_PAYMENT row until it completes.
+        // Only reachable with CREDIT_SUBSIDY_ENABLED on; otherwise the server
+        // refuses anything short of full coverage before reaching here.
+        if (data.checkout_url) { window.location.href = data.checkout_url; return; }
         if (data.completed) { onSuccess('joined'); return; }
         throw new Error('Could not start the purchase. Please try again.');
       }
