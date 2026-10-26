@@ -1736,9 +1736,14 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent, p
         <InfoRow icon={<CreditCard className="size-4 text-brand-deep" />} label="Model">
           {price <= 0
             ? 'Free — no payment required'
-            : preorder
-              ? (preorder.shortClass ? 'One-time payment for the whole class' : 'One-time payment for your first month')
-              : group.price_monthly ? 'Monthly subscription' : 'Per-session billing'}
+            : usingCredits === 'one_month'
+              // A credit month is NOT a subscription, and this panel used to
+              // say "Monthly subscription" underneath an option that had just
+              // promised the opposite.
+              ? 'One month, paid with credits'
+              : preorder
+                ? (preorder.shortClass ? 'One-time payment for the whole class' : 'One-time payment for your first month')
+                : group.price_monthly ? 'Monthly subscription' : 'Per-session billing'}
         </InfoRow>
         {preorder && (
           <InfoRow icon={<Calendar className="size-4 text-brand-deep" />} label="Classes start">
@@ -1762,6 +1767,12 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent, p
                   {preorder.shortClass
                     ? ' This class finishes inside that month, so there is nothing further to pay.'
                     : " Nothing renews automatically — we'll ask before your first month ends."}
+                </>
+              ) : usingCredits === 'one_month' ? (
+                <>
+                  This buys <strong className="text-ink">one month</strong> and does not renew, so
+                  nothing is charged after it. We&apos;ll remind you before it ends, and your place
+                  is held for a week afterwards while you decide whether to subscribe.
                 </>
               ) : (
                 <>You&apos;ll be charged {fmtTTD(totalPrice)}{group.price_monthly ? ' each month' : ' per session'}. Cancel any time from your account.</>
