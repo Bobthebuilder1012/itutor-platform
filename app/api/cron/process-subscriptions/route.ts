@@ -612,6 +612,12 @@ export async function GET(req: NextRequest) {
     results.task6_suspended = { error: String(err) };
   }
 
+  // How long a credit month's place is held past its end date while the
+  // student decides whether to subscribe. Matches GRACE_DAYS_AFTER in
+  // secure-spot-transitions: the two are the same promise to the student and
+  // should not drift apart.
+  const CREDIT_GRACE_DAYS = 7;
+
   // ─── TASK 7: Complete finished credit months ──────────────────────
   // A month bought with credits ends when its period does. The seat is
   // released (and offered to the waitlist), and the student is invited to
@@ -624,7 +630,12 @@ export async function GET(req: NextRequest) {
       .eq('enrollment_type', 'SUBSCRIPTION')
       .eq('billing_provider', 'credits')
       .eq('status', 'ACTIVE')
-      .lt('current_period_end', nowIso);
+      // Not the moment the month ends — the moment the GRACE WINDOW after it
+      // does. A credit month is a place a tutor chose to give, and it now
+      // ends the way a secured place does: held for a week past its date
+      // while the student decides, then released. Nothing is charged during
+      // it; the seat is simply not resold yet.
+      .lt('current_period_end', new Date(now.getTime() - CREDIT_GRACE_DAYS * 86_400_000).toISOString());
 
     if (dryRun) {
       results.task7_credit_months_completed = {
@@ -700,7 +711,7 @@ export async function GET(req: NextRequest) {
                   { label: 'Class', value: className, strong: true },
                   {
                     label: 'To continue',
-                    value: price > 0 ? `TT${price} a month` : 'See the class page',
+                    value: price > 0 ? `TT$${price} a month` : 'See the class page',
                   },
                 ],
               },
@@ -709,12 +720,12 @@ export async function GET(req: NextRequest) {
                 tone: 'success',
                 title: 'Nothing has been charged',
                 body:
-                  'Your credits covered the month that just ended. Nothing renews on its own, so you will only be charged if you choose to subscribe.',
+                  'Your credits covered that month, and your place was held for a week afterwards while you decided. Nothing was charged at any point, and nothing renews on its own.',
               },
               {
                 kind: 'paragraph',
                 text:
-                  'Your place has been released, so if the class is popular it is worth subscribing soon. If you would rather stop, there is nothing to do.',
+                  'That week is now up and your place has gone back to the class, so if it is popular it is worth subscribing soon. If you would rather stop, there is nothing to do.',
               },
             ],
             cta: { label: `Subscribe to ${className}`, href: link },
@@ -760,12 +771,11 @@ export async function GET(req: NextRequest) {
   // secure-spot-transitions reminds a week out and again three days out — and
   // a credit month had none of it.
   //
-  // Two steps, not three. Secure spot's third lands three days INTO a grace
-  // window, and a credit month has no grace: Task 7 completes it the moment
-  // the period ends and the seat goes straight back to the waitlist. Giving
-  // credit months a grace window would mean iTutor funding days nobody paid
-  // for, which is a pricing decision and not one to make inside a cron.
-  const CREDIT_REMIND_DAY_OFFSETS = [7, 3];
+  // Three steps, the same as secure spot: a week out, three days out, and
+  // three days INTO the grace window — after the month has technically ended
+  // but while the place is still held, which is the moment it is both urgent
+  // and still actionable.
+  const CREDIT_REMIND_DAY_OFFSETS = [7, 3, -3];
   try {
     const { data: ending } = await admin
       .from('group_enrollments')
@@ -773,7 +783,9 @@ export async function GET(req: NextRequest) {
       .eq('enrollment_type', 'SUBSCRIPTION')
       .eq('billing_provider', 'credits')
       .eq('status', 'ACTIVE')
-      .gt('current_period_end', nowIso)
+      // Includes months already past their end date but still inside the
+      // grace window, which is where the third reminder lands.
+      .gt('current_period_end', new Date(now.getTime() - CREDIT_GRACE_DAYS * 86_400_000).toISOString())
       .lt('reminder_count', CREDIT_REMIND_DAY_OFFSETS.length);
 
     // Which step is due, or null. "Due on or before today" rather than "today
@@ -816,15 +828,29 @@ export async function GET(req: NextRequest) {
           weekday: 'long', month: 'long', day: 'numeric', timeZone: 'America/Port_of_Spain',
         });
         const daysLeft = CREDIT_REMIND_DAY_OFFSETS[step];
+        // A negative offset is a day INSIDE the grace window: the month has
+        // ended, the place is still held, and this is the last word before
+        // the seat is resold.
+        const inGrace = daysLeft < 0;
+        const heldUntil = new Date(
+          new Date(e.current_period_end as string).getTime() + CREDIT_GRACE_DAYS * 86_400_000
+        ).toLocaleDateString('en-TT', {
+          weekday: 'long', month: 'long', day: 'numeric', timeZone: 'America/Port_of_Spain',
+        });
         const link = `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/student/explore/${e.group_id}`;
 
         const mail = renderEmail({
           family: 'schedule-change',
-          subject:
-            daysLeft <= 3
+          subject: inGrace
+            ? `Your place in ${className} is held until ${heldUntil}`
+            : daysLeft <= 3
               ? `Only ${daysLeft} days left in ${className}`
               : `Your month in ${className} ends ${endsOn}`,
-          heading: daysLeft <= 3 ? 'Your place ends this week' : 'Your month is ending soon',
+          heading: inGrace
+            ? 'Your place is still held'
+            : daysLeft <= 3
+              ? 'Your place ends this week'
+              : 'Your month is ending soon',
           intro: `Hi ${student.full_name ?? 'there'},`,
           eyebrow: 'Subscribe to keep your place',
           blocks: [
@@ -832,27 +858,34 @@ export async function GET(req: NextRequest) {
               kind: 'details',
               rows: [
                 { label: 'Class', value: className, strong: true },
-                { label: 'Your month ends', value: endsOn },
-                { label: 'To continue', value: price > 0 ? `TT${price} a month` : 'See the class page' },
+                inGrace
+                  ? { label: 'Place held until', value: heldUntil }
+                  : { label: 'Your month ends', value: endsOn },
+                { label: 'To continue', value: price > 0 ? `TT$${price} a month` : 'See the class page' },
               ],
             },
             {
               kind: 'notice',
-              // The later reminder is the urgent one, and says the thing that
-              // is actually at stake: the seat, not the discount.
+              // Each step says the thing that is true at that moment. A week
+              // out the useful fact is that nothing is charged on its own;
+              // later it is the seat that is at stake, not the saving.
               tone: daysLeft <= 3 ? 'warning' : 'success',
-              title:
-                daysLeft <= 3
-                  ? 'Your seat goes back to the waitlist when the month ends'
+              title: inGrace
+                ? `Your place is held until ${heldUntil}`
+                : daysLeft <= 3
+                  ? 'Your place is held for a week after your month ends'
                   : 'Nothing will be charged automatically',
-              body:
-                daysLeft <= 3
-                  ? 'There is no grace period on a month paid with credits. Subscribe before it ends and you keep the same seat without a break.'
+              body: inGrace
+                ? 'Your month has ended, but your tutor is holding your place a little longer. Subscribe before the date above and you keep the same seat without a break; after it, the seat goes back to the waitlist.'
+                : daysLeft <= 3
+                  ? 'When your month ends your place is held for seven more days while you decide. Nothing is charged during that time, and subscribing before it is up keeps the same seat.'
                   : 'Your credits covered this month. Nothing renews on its own, so you will only be charged if you choose to subscribe.',
             },
             {
               kind: 'paragraph',
-              text: 'If you would rather stop, there is nothing to do — your place simply ends.',
+              text: inGrace
+                ? `If you would rather stop, there is nothing to do — your place ends after ${heldUntil}.`
+                : 'If you would rather stop, there is nothing to do — your place simply ends.',
             },
           ],
           cta: { label: `Subscribe to ${className}`, href: link },
