@@ -752,6 +752,145 @@ export async function GET(req: NextRequest) {
     results.task7_credit_months_completed = { error: String(err) };
   }
 
+  // ─── TASK 8: Warn a credit month before it ends ───────────────────
+  // Task 7 tells a student their month is over. This tells them it is ABOUT
+  // to be, which is the email that actually earns anything: asking someone to
+  // subscribe to a class they are still attending converts far better than
+  // asking after their place has gone. Secure spot learned this already —
+  // secure-spot-transitions reminds a week out and again three days out — and
+  // a credit month had none of it.
+  //
+  // Two steps, not three. Secure spot's third lands three days INTO a grace
+  // window, and a credit month has no grace: Task 7 completes it the moment
+  // the period ends and the seat goes straight back to the waitlist. Giving
+  // credit months a grace window would mean iTutor funding days nobody paid
+  // for, which is a pricing decision and not one to make inside a cron.
+  const CREDIT_REMIND_DAY_OFFSETS = [7, 3];
+  try {
+    const { data: ending } = await admin
+      .from('group_enrollments')
+      .select('id, group_id, student_id, plan_price_ttd, current_period_end, reminder_count')
+      .eq('enrollment_type', 'SUBSCRIPTION')
+      .eq('billing_provider', 'credits')
+      .eq('status', 'ACTIVE')
+      .gt('current_period_end', nowIso)
+      .lt('reminder_count', CREDIT_REMIND_DAY_OFFSETS.length);
+
+    // Which step is due, or null. "Due on or before today" rather than "today
+    // exactly", so a missed run or a failed send is picked up tomorrow instead
+    // of that step being skipped for good.
+    const dueStep = (periodEnd: string, sentSoFar: number): number | null => {
+      for (let i = sentSoFar; i < CREDIT_REMIND_DAY_OFFSETS.length; i++) {
+        const due = new Date(periodEnd).getTime() - CREDIT_REMIND_DAY_OFFSETS[i] * 86_400_000;
+        if (due <= Date.now()) return i;
+      }
+      return null;
+    };
+
+    const candidates = (ending ?? []).filter(
+      (e) => e.current_period_end && dueStep(e.current_period_end, Number(e.reminder_count ?? 0)) !== null
+    );
+
+    if (dryRun) {
+      results.task8_credit_month_reminders = {
+        would_send: candidates.length,
+        rows: candidates.map((e) => ({ enrollment_id: e.id, period_end: e.current_period_end })),
+      };
+    } else {
+      let sentCount = 0;
+      for (const e of candidates) {
+        const step = dueStep(e.current_period_end as string, Number(e.reminder_count ?? 0));
+        if (step === null) continue;
+
+        const { data: student } = await admin
+          .from('profiles')
+          .select('email, full_name')
+          .eq('id', e.student_id)
+          .maybeSingle();
+        if (!student?.email) continue;
+
+        const { data: group } = await admin.from('groups').select('name').eq('id', e.group_id).single();
+        const className = group?.name ?? 'your class';
+        const price = Number(e.plan_price_ttd ?? 0);
+        const endsOn = new Date(e.current_period_end as string).toLocaleDateString('en-TT', {
+          weekday: 'long', month: 'long', day: 'numeric', timeZone: 'America/Port_of_Spain',
+        });
+        const daysLeft = CREDIT_REMIND_DAY_OFFSETS[step];
+        const link = `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/student/explore/${e.group_id}`;
+
+        const mail = renderEmail({
+          family: 'schedule-change',
+          subject:
+            daysLeft <= 3
+              ? `Only ${daysLeft} days left in ${className}`
+              : `Your month in ${className} ends ${endsOn}`,
+          heading: daysLeft <= 3 ? 'Your place ends this week' : 'Your month is ending soon',
+          intro: `Hi ${student.full_name ?? 'there'},`,
+          eyebrow: 'Subscribe to keep your place',
+          blocks: [
+            {
+              kind: 'details',
+              rows: [
+                { label: 'Class', value: className, strong: true },
+                { label: 'Your month ends', value: endsOn },
+                { label: 'To continue', value: price > 0 ? `TT${price} a month` : 'See the class page' },
+              ],
+            },
+            {
+              kind: 'notice',
+              // The later reminder is the urgent one, and says the thing that
+              // is actually at stake: the seat, not the discount.
+              tone: daysLeft <= 3 ? 'warning' : 'success',
+              title:
+                daysLeft <= 3
+                  ? 'Your seat goes back to the waitlist when the month ends'
+                  : 'Nothing will be charged automatically',
+              body:
+                daysLeft <= 3
+                  ? 'There is no grace period on a month paid with credits. Subscribe before it ends and you keep the same seat without a break.'
+                  : 'Your credits covered this month. Nothing renews on its own, so you will only be charged if you choose to subscribe.',
+            },
+            {
+              kind: 'paragraph',
+              text: 'If you would rather stop, there is nothing to do — your place simply ends.',
+            },
+          ],
+          cta: { label: `Subscribe to ${className}`, href: link },
+        });
+
+        const sent = await sendEmail({
+          to: student.email,
+          subject: mail.subject,
+          html: mail.html,
+          text: mail.text,
+        });
+        // The counter moves ONLY on a confirmed send. sendEmail reports a
+        // suppressed or disabled send as success with a sentinel id, and a
+        // real failure as success:false; bumping regardless is what left two
+        // secure-spot students marked reminded and silent on 2026-10-14.
+        if (!sent.success) {
+          console.warn(`[cron/process-subscriptions] Task 8 email failed for ${e.id}: ${sent.error ?? 'send failed'}`);
+          continue;
+        }
+
+        await admin
+          .from('group_enrollments')
+          .update({
+            reminder_count: step + 1,
+            last_reminder_sent_at: nowIso,
+            updated_at: nowIso,
+          })
+          .eq('id', e.id)
+          .eq('status', 'ACTIVE');
+        sentCount++;
+      }
+      results.task8_credit_month_reminders = { sent: sentCount };
+    }
+  } catch (err) {
+    console.error('[cron/process-subscriptions] Task 8 failed:', err);
+    results.task8_credit_month_reminders = { error: String(err) };
+  }
+
   // Every task above swallows its own error so one failure cannot stop the
   // rest of the run. That is deliberate — but the response must still say so,
   // otherwise a task can no-op for months while the cron reports success.
