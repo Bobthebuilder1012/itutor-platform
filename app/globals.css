@@ -231,3 +231,59 @@
     }
   }
 }
+
+/* ── Rewards page entrance ──────────────────────────────────────────────
+   A short staggered reveal that walks down the page in reading order:
+   balance first, then how to earn more, then the smaller cards.
+
+   Motion is affordable here because /student/rewards is an occasional
+   visit — somewhere you go to check a balance or fetch your link, not a
+   surface you open many times a day. The same reveal on a dashboard or a
+   nav would be wrong.
+
+   CSS animation rather than JS: the motion is predetermined, and this
+   plays at exactly the moment the page is hydrating and fetching, when a
+   requestAnimationFrame loop is most likely to drop frames. CSS runs off
+   the main thread and does not care.
+
+   transform + opacity only, so there is no layout or paint work per frame.
+   Fill mode `both` holds the from-state through the delay; if this
+   stylesheet never loads, the class does nothing and everything is simply
+   visible, which is the right failure. */
+@keyframes reveal-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes reveal-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+.reveal-stack > * {
+  animation: reveal-rise 260ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+/* 60ms apart — enough to read as a sequence, short enough that the last
+   card has landed in well under half a second. */
+.reveal-stack > *:nth-child(1) { animation-delay: 0ms; }
+.reveal-stack > *:nth-child(2) { animation-delay: 60ms; }
+.reveal-stack > *:nth-child(3) { animation-delay: 120ms; }
+.reveal-stack > *:nth-child(4) { animation-delay: 180ms; }
+.reveal-stack > *:nth-child(5) { animation-delay: 240ms; }
+.reveal-stack > *:nth-child(6) { animation-delay: 300ms; }
+/* Anything further down arrives together rather than trailing off. */
+.reveal-stack > *:nth-child(n + 7) { animation-delay: 360ms; }
+
+/* Fewer and gentler, not none: the fade still signals that content arrived,
+   the travel is dropped. :nth-child(n) matches the specificity of the
+   stagger rules above so the delays are genuinely cleared. */
+@media (prefers-reduced-motion: reduce) {
+  .reveal-stack > *,
+  .reveal-stack > *:nth-child(n) {
+    animation: reveal-fade 200ms ease both;
+  }
+}
