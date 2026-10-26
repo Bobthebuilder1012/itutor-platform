@@ -620,7 +620,7 @@ export async function GET(req: NextRequest) {
   try {
     const { data: finished } = await admin
       .from('group_enrollments')
-      .select('id, group_id, student_id')
+      .select('id, group_id, student_id, plan_price_ttd')
       .eq('enrollment_type', 'SUBSCRIPTION')
       .eq('billing_provider', 'credits')
       .eq('status', 'ACTIVE')
@@ -663,6 +663,79 @@ export async function GET(req: NextRequest) {
           group_id: e.group_id,
         });
         if (notifyError) console.warn('[cron/process-subscriptions] Task 7 notification failed:', notifyError.message);
+
+        // ── And an email, not only a bell ────────────────────────────────
+        // The in-app notification above is seen by whoever happens to open the
+        // app. This month has just ENDED and the seat has gone back to the
+        // waitlist, so the person who most needs to hear it is the student who
+        // has stopped visiting. That is an email, not a badge.
+        //
+        // They resubscribe at the FULL monthly price. Credits paid for the
+        // month that just finished and play no part in what follows — the very
+        // reason a credit month never renews is that renewing it would bill
+        // the subsidised figure for ever.
+        const link = `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/student/explore/${e.group_id}`;
+        const { data: student } = await admin
+          .from('profiles')
+          .select('email, full_name')
+          .eq('id', e.student_id)
+          .maybeSingle();
+
+        if (student?.email) {
+          const className = group?.name ?? 'your class';
+          const price = Number(e.plan_price_ttd ?? 0);
+          // Family 10, matching the secure-spot lapse mail: a change to
+          // something already agreed, where the sentence that must survive is
+          // that nothing is being charged on its own.
+          const mail = renderEmail({
+            family: 'schedule-change',
+            subject: `Your month in ${className} has ended`,
+            heading: 'Subscribe to continue your class',
+            intro: `Hi ${student.full_name ?? 'there'},`,
+            eyebrow: 'Your credit month is over',
+            blocks: [
+              {
+                kind: 'details',
+                rows: [
+                  { label: 'Class', value: className, strong: true },
+                  {
+                    label: 'To continue',
+                    value: price > 0 ? `TT${price} a month` : 'See the class page',
+                  },
+                ],
+              },
+              {
+                kind: 'notice',
+                tone: 'success',
+                title: 'Nothing has been charged',
+                body:
+                  'Your credits covered the month that just ended. Nothing renews on its own, so you will only be charged if you choose to subscribe.',
+              },
+              {
+                kind: 'paragraph',
+                text:
+                  'Your place has been released, so if the class is popular it is worth subscribing soon. If you would rather stop, there is nothing to do.',
+              },
+            ],
+            cta: { label: `Subscribe to ${className}`, href: link },
+          });
+
+          // sendEmail never throws; it reports failure in the result. A send
+          // that never left the building must not be treated as one that did —
+          // the mistake that left two secure-spot students marked reminded and
+          // silent on 2026-10-14.
+          const sent = await sendEmail({
+            to: student.email,
+            subject: mail.subject,
+            html: mail.html,
+            text: mail.text,
+          });
+          if (!sent.success) {
+            console.warn(
+              `[cron/process-subscriptions] Task 7 email failed for ${e.id}: ${sent.error ?? 'send failed'}`
+            );
+          }
+        }
 
         freedGroupIds.add(e.group_id);
         completed++;
