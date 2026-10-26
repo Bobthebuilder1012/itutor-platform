@@ -1,12 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getServiceClient } from '@/lib/supabase/server';
 import { randomInt, createHash } from 'crypto';
-import { Resend } from 'resend';
 import { renderEmail } from '@/lib/email/design';
+import { sendEmail } from '@/lib/services/emailService';
 
 export const dynamic = 'force-dynamic';
-
-const resend = new Resend(process.env.RESEND_API_KEY);
 
 export async function POST(req: Request) {
   try {
@@ -72,18 +70,20 @@ export async function POST(req: Request) {
       ],
     });
 
-    const { error: emailError } = await resend.emails.send({
-      from: process.env.RESEND_FROM_EMAIL || 'iTutor <hello@myitutor.com>',
-      to: email,
-      subject,
-      html,
-      text,
-    });
+    // Routed through sendEmail rather than a provider SDK directly, so this —
+    // the single most important email the platform sends, the one without
+    // which nobody can finish signing up — follows the EMAIL_PROVIDER switch
+    // like everything else. It previously held its own Resend client, which
+    // meant a provider swap would have left signup broken while every other
+    // email migrated cleanly. It also built that client at module scope, so a
+    // missing RESEND_API_KEY threw on import and took the whole route down
+    // rather than failing one send.
+    const result = await sendEmail({ to: email, subject, html, text });
 
-    if (emailError) {
-      console.error('[send-verification] email error:', emailError);
+    if (!result.success) {
+      console.error('[send-verification] email error:', result.error);
       return NextResponse.json(
-        { error: 'Failed to send verification email', detail: emailError.message },
+        { error: 'Failed to send verification email', detail: result.error },
         { status: 500 }
       );
     }

@@ -4,6 +4,45 @@
 // Handles all email sending logic with Resend integration
 
 import { Resend } from 'resend';
+import { getCustomerIoEmailConfig, sendViaCustomerIo } from '@/lib/email/providers/customerio';
+
+/**
+ * Which service actually sends.
+ *
+ * This exists because a provider can be taken away from you with no notice —
+ * a suspension, an outage, a billing dispute — and every transactional email
+ * on the platform stops at once. Swapping provider should be an environment
+ * variable and a redeploy, not a code change under time pressure.
+ *
+ * Defaults to Resend, so an environment that says nothing behaves exactly as
+ * it did before this switch existed.
+ */
+type EmailProvider = 'resend' | 'customerio';
+
+function getProvider(): EmailProvider {
+  const raw = process.env.EMAIL_PROVIDER?.trim();
+  if (!raw) return 'resend';
+
+  // Punctuation and case are stripped before matching, so `customer.io`,
+  // `Customer.IO` and `customer-io` all select Customer.io. This is not
+  // tidiness: the product is written with a dot everywhere except in this
+  // value, an exact-match check would read the dotted spelling as "not
+  // Customer.io", and the fallback is the provider you are trying to move off.
+  // Combined with sendEmail reporting success when a provider is unconfigured,
+  // a single typo would mean silently sending nothing at all.
+  const normalized = raw.toLowerCase().replace(/[^a-z]/g, '');
+  if (normalized === 'customerio') return 'customerio';
+  if (normalized === 'resend') return 'resend';
+
+  // An unrecognised value is a misconfiguration, not a preference. Falling
+  // through to the default silently is how an outage lasts a day longer than
+  // it needed to, so it is said out loud on every send.
+  console.error(
+    `[EMAIL] Unrecognised EMAIL_PROVIDER "${raw}" — falling back to Resend. ` +
+      `Valid values: "resend", "customerio".`
+  );
+  return 'resend';
+}
 
 let resendClient: Resend | null = null;
 
@@ -66,27 +105,49 @@ function isAllowedRecipient(to: string): boolean {
 }
 
 /**
- * Send an email using Resend
+ * Send an email through whichever provider EMAIL_PROVIDER selects.
  */
 export async function sendEmail({
   to,
   subject,
   html,
   text,
-  from = process.env.RESEND_FROM_EMAIL || 'iTutor <hello@myitutor.com>',
+  from = process.env.EMAIL_FROM ||
+    process.env.RESEND_FROM_EMAIL ||
+    'iTutor <hello@myitutor.com>',
 }: SendEmailParams): Promise<EmailResult> {
+  // The allowlist is checked FIRST, before any provider is consulted, because
+  // it is the guard that makes a live-data environment safe to point at a real
+  // sender. It used to sit behind the Resend no-key check, which was harmless
+  // while a missing key meant nothing could send anyway. It is not harmless
+  // now: Customer.io CREATES a person profile for every address it sends to,
+  // so a send from staging does not just deliver a mail, it loads a real
+  // customer into a marketing tool. Suppression has to happen before that.
+  //
+  // Reported as success: a suppressed send is a deliberate outcome, not a
+  // failure for the caller to retry or surface.
+  if (!isAllowedRecipient(to)) {
+    console.log(`[EMAIL SUPPRESSED — not in EMAIL_ALLOWLIST] to=${to} subject=${subject}`);
+    return { success: true, messageId: 'suppressed' };
+  }
+
+  if (getProvider() === 'customerio') {
+    const config = getCustomerIoEmailConfig();
+    // Mirrors the Resend no-key path below: unconfigured is a no-op, not a
+    // crash, so an environment without credentials stays quiet.
+    if (!config) {
+      console.log(`[EMAIL SKIPPED — no CUSTOMERIO_APP_API_KEY] to=${to} subject=${subject}`);
+      return { success: true, messageId: 'disabled' };
+    }
+    return sendViaCustomerIo({ to, from, subject, html, text }, config);
+  }
+
   const resend = getResend();
   // No RESEND_API_KEY configured (e.g. staging without email set up) → no-op,
   // so nothing is sent by accident. Sending is enabled the moment a key exists.
   if (!resend) {
     console.log(`[EMAIL SKIPPED — no RESEND_API_KEY] to=${to} subject=${subject}`);
     return { success: true, messageId: 'disabled' };
-  }
-  // Reported as success, matching the no-key path above: a suppressed send is a
-  // deliberate outcome, not a failure for the caller to retry or surface.
-  if (!isAllowedRecipient(to)) {
-    console.log(`[EMAIL SUPPRESSED — not in EMAIL_ALLOWLIST] to=${to} subject=${subject}`);
-    return { success: true, messageId: 'suppressed' };
   }
   try {
     // `text` is omitted rather than sent empty when the caller has none: Resend
