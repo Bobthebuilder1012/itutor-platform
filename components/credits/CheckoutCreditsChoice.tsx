@@ -1,17 +1,23 @@
 'use client';
 
-// "Use your credits" on a class's join flow. Three choices:
+// "Use your credits" on a class's join flow. Two choices:
 //
-//   none         pay by card as usual
-//   first_month  credits off the first month of the subscription (scenario C)
-//                — the card still pays something, at least the minimum,
-//                because a subscription cannot start on credits alone
-//   one_month    one month only, paid with credits (scenario B) — no card at
-//                all when the credits cover it; never renews
+//   none       pay by card as usual
+//   one_month  one month only, paid with credits (scenario B), with a card
+//              covering the remainder when the credits fall short. Never
+//              renews; the student is invited to subscribe before it ends.
 //
-// Renders nothing for someone with no spendable credits. The figures for one
-// month are exact; the first-month figure is the most that could come off —
-// the checkout page shows the exact charge before anything is paid.
+// THERE IS NO THIRD OPTION, AND THERE MUST NOT BE. Credits off the first
+// month of a SUBSCRIPTION — scenario C — was offered here until 2026-10-26
+// and did nothing at all: no caller ever read the choice, so the student was
+// charged the full price by card and kept credits they had just been told
+// were being spent. It is not merely restored-and-broken, it is unwanted:
+// credits must never start a subscription (owner's rule). Spending credits
+// is a one-off month, and continuing afterwards is a decision taken at the
+// full price.
+//
+// Renders nothing for someone with no spendable credits, and the figures
+// shown are exact.
 
 import { useEffect, useState } from 'react';
 import { Gift } from 'lucide-react';
@@ -19,7 +25,7 @@ import { cn } from '@/lib/utils';
 import { fmtCredits, useCredits } from '@/lib/credits/useCredits';
 import type { CreditQuote } from '@/lib/credits/quote';
 
-export type CreditChoice = 'none' | 'first_month' | 'one_month';
+export type CreditChoice = 'none' | 'one_month';
 
 export default function CheckoutCreditsChoice({
   groupId,
@@ -33,22 +39,21 @@ export default function CheckoutCreditsChoice({
   const { data } = useCredits('lite');
   const balance = data?.available && !data.suspended ? data.wallet?.available ?? 0 : 0;
   const [month, setMonth] = useState<CreditQuote | null>(null);
-  const [first, setFirst] = useState<CreditQuote | null>(null);
 
   useEffect(() => {
     if (balance <= 0) return;
     let cancelled = false;
     (async () => {
-      const [b, c] = await Promise.all(
-        (['B', 'C'] as const).map((s) =>
-          fetch(`/api/credits/quote?groupId=${encodeURIComponent(groupId)}&scenario=${s}`, { cache: 'no-store' })
-            .then((r) => (r.ok ? r.json() : null))
-            .catch(() => null)
-        )
-      );
+      // Scenario B only. C was asked for here too, purely to label an option
+      // that did nothing — a wasted round trip on every class page.
+      const b = await fetch(
+        `/api/credits/quote?groupId=${encodeURIComponent(groupId)}&scenario=B`,
+        { cache: 'no-store' }
+      )
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null);
       if (cancelled) return;
       setMonth(b?.available ? (b.quote as CreditQuote) : null);
-      setFirst(c?.available ? (c.quote as CreditQuote) : null);
     })();
     return () => {
       cancelled = true;
@@ -60,13 +65,6 @@ export default function CheckoutCreditsChoice({
   const options: Array<{ v: CreditChoice; title: string; detail: string; disabled?: boolean }> = [
     { v: 'none', title: 'Pay by card', detail: 'Keep your credits for later.' },
   ];
-  if (first && first.creditsApplied > 0) {
-    options.push({
-      v: 'first_month',
-      title: `Use up to ${fmtCredits(first.creditsApplied)} on my first month`,
-      detail: `Your subscription starts as normal and renews at the full price. The card pays at least ${fmtCredits(first.cashGross)} today.`,
-    });
-  }
   if (month && month.creditsApplied > 0) {
     options.push({
       v: 'one_month',
