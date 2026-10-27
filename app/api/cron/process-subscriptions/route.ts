@@ -24,6 +24,7 @@ import { createClient } from '@supabase/supabase-js';
 import { promoteNextFromWaitlist } from '@/lib/services/waitlistService';
 import { sendEmail } from '@/lib/services/emailService';
 import { renderEmail } from '@/lib/email/design';
+import { expireSubscriptionPayment } from '@/lib/services/subscriptionPayments';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -145,6 +146,35 @@ export async function GET(req: NextRequest) {
       const expiredGroupIds = new Set<string>();
 
       for (const e of expired ?? []) {
+        // THE PAYMENT ROW FIRST, AND THIS IS THE WHOLE POINT.
+        //
+        // Cancelling the enrolment used to be all this did, which left any
+        // credits reserved for that checkout reserved for ever: nothing else
+        // ever expires these payment rows, and expireSubscriptionPayment is
+        // the only caller of releaseCredits on this path. A student who
+        // opened a credit checkout and closed the tab watched their balance
+        // drop to zero and stay there, with no payment taken and no way back
+        // except starting another checkout for the same class — which
+        // releases the stale reservation on the way in.
+        //
+        // Observed on production 2026-10-26 the first time anyone tried the
+        // subsidy: TT$100 held against an abandoned TT$120 checkout.
+        const { data: pendingPayments } = await admin
+          .from('subscription_payments')
+          .select('id')
+          .eq('enrollment_id', e.id)
+          .eq('status', 'PENDING');
+
+        for (const p of pendingPayments ?? []) {
+          try {
+            await expireSubscriptionPayment(admin as any, p.id);
+          } catch (err) {
+            // Never let one stuck payment stop the sweep: the seat still has
+            // to go back, and tomorrow's run will try this row again.
+            console.warn(`[cron/process-subscriptions] Task 2 could not expire payment ${p.id}:`, err);
+          }
+        }
+
         await admin
           .from('group_enrollments')
           .update({ status: 'CANCELLED' })

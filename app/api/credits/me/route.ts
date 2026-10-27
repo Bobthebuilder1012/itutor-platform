@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { getCreditSettings } from '@/lib/credits/settings';
 import { getWallet } from '@/lib/credits/wallet';
+import { releaseLapsedCreditHolds } from '@/lib/credits/releaseLapsedHolds';
 import { getOrCreateReferralCode, referralLink } from '@/lib/credits/referralCodes';
 import { firstNameAndInitial } from '@/lib/credits/notify';
 import type { CreditHistoryItem, CreditLedgerRow, CreditsMePayload } from '@/lib/credits/types';
@@ -35,6 +36,12 @@ export async function GET(req: NextRequest) {
   if (profile?.role !== 'student' && profile?.role !== 'parent') {
     return NextResponse.json({ available: false } satisfies CreditsMePayload);
   }
+
+  // Repair the balance before reporting it. Credits held for a checkout that
+  // was abandoned are otherwise invisible until the daily cron, and a student
+  // looking at a zero balance they did not spend has no way to tell the
+  // difference between a hold and a charge.
+  await releaseLapsedCreditHolds(admin, user.id);
 
   const lite = req.nextUrl.searchParams.get('lite') === '1';
   const wallet = (await getWallet(admin, user.id)) ?? { available: 0, pending: 0, reserved: 0 };
