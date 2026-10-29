@@ -90,9 +90,6 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
     description: group.description ?? '',
     goals: ((group as any).goals ?? '') as string,
     cover_image: ((group as any).cover_image ?? '') as string,
-    pricing_mode: ((group as any).pricing_mode ?? 'FREE') as 'FREE' | 'PER_SESSION' | 'PER_COURSE',
-    price_per_session: (group as any).price_per_session ?? '',
-    price_per_course: (group as any).price_per_course ?? '',
     pricing_model: ((group as any).pricing_model ?? 'FREE') as 'FREE' | 'PER_SESSION' | 'MONTHLY',
     price_monthly: (group as any).price_monthly?.toString() ?? '',
   });
@@ -243,9 +240,6 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
       description: group.description ?? '',
       goals: ((group as any).goals ?? '') as string,
       cover_image: ((group as any).cover_image ?? '') as string,
-      pricing_mode: ((group as any).pricing_mode ?? 'FREE') as 'FREE' | 'PER_SESSION' | 'PER_COURSE',
-      price_per_session: (group as any).price_per_session ?? '',
-      price_per_course: (group as any).price_per_course ?? '',
       pricing_model: ((group as any).pricing_model ?? 'FREE') as 'FREE' | 'PER_SESSION' | 'MONTHLY',
       price_monthly: (group as any).price_monthly?.toString() ?? '',
     });
@@ -278,15 +272,10 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
         description: manageForm.description.trim() || null,
         goals: manageForm.goals.trim() || null,
         cover_image: manageForm.cover_image.trim() || null,
-        pricing_mode: manageForm.pricing_mode,
-        price_per_session:
-          manageForm.pricing_mode === 'PER_SESSION' && manageForm.price_per_session !== ''
-            ? Number(manageForm.price_per_session)
-            : null,
-        price_per_course:
-          manageForm.pricing_mode === 'PER_COURSE' && manageForm.price_per_course !== ''
-            ? Number(manageForm.price_per_course)
-            : null,
+        // pricing_mode, price_per_session and price_per_course are no longer
+        // sent. One-off pricing is gone from this form, and omitting the
+        // fields leaves whatever a class already holds untouched rather than
+        // nulling it on an unrelated save.
         pricing_model: manageForm.pricing_model,
         price_monthly:
           manageForm.pricing_model === 'MONTHLY' && manageForm.price_monthly !== ''
@@ -796,16 +785,6 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
                       </div>
                     </div>
                   )}
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-[14px]">
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[12.5px] font-semibold">One-off pricing</label>
-                    <select value={manageForm.pricing_mode} onChange={(e) => setManageForm((p) => ({ ...p, pricing_mode: e.target.value as any }))} className={inputCls}>
-                      <option value="FREE">Free</option><option value="PER_SESSION">Per session</option><option value="PER_COURSE">Per course</option>
-                    </select>
-                  </div>
-                  <div className="flex flex-col gap-1"><label className="text-[12.5px] font-semibold">Price per session</label><input type="number" min={0} value={manageForm.price_per_session} onChange={(e) => setManageForm((p) => ({ ...p, price_per_session: e.target.value }))} disabled={manageForm.pricing_mode !== 'PER_SESSION'} className={`${inputCls} disabled:bg-gray-100`} /></div>
-                  <div className="flex flex-col gap-1"><label className="text-[12.5px] font-semibold">Price per course</label><input type="number" min={0} value={manageForm.price_per_course} onChange={(e) => setManageForm((p) => ({ ...p, price_per_course: e.target.value }))} disabled={manageForm.pricing_mode !== 'PER_COURSE'} className={`${inputCls} disabled:bg-gray-100`} /></div>
                 </div>
               </div>
             </>
