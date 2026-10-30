@@ -1,12 +1,13 @@
 'use client';
 
-// Type a student's email, press Enter, and you are logged in as them.
-// The card hides itself unless the API says this admin is a superadmin — the
-// check is cosmetic, the real gate is server-side on every call.
+// Type any user's email, press Enter, and you are logged in as them — student,
+// parent, tutor, reviewer or another admin. The card hides itself unless the API
+// says this admin is a superadmin; that check is cosmetic, the real gate is
+// server-side on every call.
 
 import { useEffect, useState } from 'react';
 
-export default function EnterStudentAccountCard() {
+export default function EnterAccountCard() {
   const [allowed, setAllowed] = useState(false);
   const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
@@ -37,8 +38,9 @@ export default function EnterStudentAccountCard() {
         setBusy(false);
         return;
       }
-      // Full page load: the session cookies are now the student's, and nothing
-      // cached from the admin session should survive the transition.
+      // Full page load: the session cookies are now the other account's, and
+      // nothing cached from the admin session should survive the transition.
+      // The server picks the landing page from their role.
       window.location.href = data?.redirectTo || '/student/dashboard';
     } catch (e: any) {
       setError(e?.message || 'Could not enter that account.');
@@ -48,10 +50,11 @@ export default function EnterStudentAccountCard() {
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-      <h2 className="text-lg font-semibold text-gray-900">Enter a student account</h2>
+      <h2 className="text-lg font-semibold text-gray-900">Enter an account</h2>
       <p className="text-sm text-gray-500 mt-1">
-        Signs you in as that student for real — not a preview. Anything you do is done as them,
-        and every entry is written to the admin audit log.
+        Any account — student, parent, tutor, reviewer or admin. Signs you in as them for real —
+        not a preview. Anything you do is done as them, and every entry is written to the admin
+        audit log.
       </p>
 
       <div className="flex flex-col sm:flex-row gap-3 mt-4">
@@ -62,7 +65,7 @@ export default function EnterStudentAccountCard() {
           onKeyDown={(e) => {
             if (e.key === 'Enter') handleEnter();
           }}
-          placeholder="student@example.com"
+          placeholder="user@example.com"
           autoComplete="off"
           disabled={busy}
           className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-itutor-green disabled:bg-gray-50"

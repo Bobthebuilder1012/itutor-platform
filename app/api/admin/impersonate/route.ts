@@ -1,10 +1,13 @@
 // =====================================================
-// ADMIN IMPERSONATION — enter / exit a student account
+// ADMIN IMPERSONATION — enter / exit any account
 // =====================================================
 // POST  { email }  → swaps the caller's session cookies for a REAL session
-//                    belonging to that student. Everything the student could do,
-//                    the admin can now do, and the student's own view shows
-//                    nothing. This is a full login, not a read-only projection.
+//                    belonging to that user. Everything they could do, the admin
+//                    can now do, and their own view shows nothing. This is a
+//                    full login, not a read-only projection. Any role can be
+//                    entered — student, parent, tutor, reviewer, admin — so the
+//                    only thing between a superadmin and a peer admin's account
+//                    is the SUPERADMIN_EMAILS list.
 // GET              → { allowed } so the UI can hide the control from admins who
 //                    would only get a 403 from it.
 // DELETE           → ends it and restores the admin's session.
@@ -12,9 +15,9 @@
 // Why a magic link: Supabase has no admin "mint a session for user X" API. The
 // service role CAN generate a one-time token for any user (generateLink does NOT
 // send mail — it returns the token), and verifying that token against the anon
-// client produces an ordinary session whose JWT says `sub = student`. So every
+// client produces an ordinary session whose JWT says `sub = target`. So every
 // RLS policy, every `auth.uid()` and every API route downstream sees a genuine
-// student, with no impersonation-aware code anywhere else in the app.
+// user, with no impersonation-aware code anywhere else in the app.
 //
 // Gate: superadmin email list, checked server-side on every call. `requireAdmin`
 // alone is NOT enough — it also passes reviewers and any role='admin' profile.
@@ -23,7 +26,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { requireAdmin } from '@/lib/middleware/adminAuth';
-import { isSuperAdmin } from '@/lib/auth/adminAccess';
+import { getAdminHomePath, isSuperAdmin } from '@/lib/auth/adminAccess';
 import { getServiceClient } from '@/lib/supabase/server';
 import { logAdminAction } from '@/lib/services/adminAudit';
 import {
@@ -60,6 +63,24 @@ function getCookieWritingClient() {
   );
 }
 
+/**
+ * Where entering drops the admin. Mirrors AuthProvider's own role routing, so
+ * the landing page is the one that account sees when it signs in normally.
+ * is_reviewer beats the role for the same reason it does there: a reviewer is a
+ * tutor row with a second job.
+ */
+function landingPathFor(target: {
+  role: string | null;
+  is_reviewer?: boolean | null;
+  email: string;
+}) {
+  if (target.role === 'admin') return getAdminHomePath(target.email);
+  if (target.is_reviewer) return '/reviewer/dashboard';
+  if (target.role === 'tutor') return '/tutor/dashboard';
+  if (target.role === 'parent') return '/parent/dashboard';
+  return '/student/dashboard';
+}
+
 export async function GET() {
   const auth = await requireAdmin();
   if (auth.error) return auth.error;
@@ -82,7 +103,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     const rawEmail = typeof body?.email === 'string' ? body.email.trim() : '';
     if (!rawEmail) {
-      return NextResponse.json({ error: 'Enter the student email address.' }, { status: 400 });
+      return NextResponse.json({ error: 'Enter the account email address.' }, { status: 400 });
     }
     const email = rawEmail.toLowerCase();
 
@@ -92,7 +113,7 @@ export async function POST(request: NextRequest) {
     // % or _ as a wildcard and could hand back somebody else's account.
     let { data: target } = await admin
       .from('profiles')
-      .select('id, email, full_name, role, is_suspended')
+      .select('id, email, full_name, role, is_reviewer, is_suspended')
       .eq('email', email)
       .maybeSingle();
 
@@ -100,7 +121,7 @@ export async function POST(request: NextRequest) {
     if (!target && rawEmail !== email) {
       ({ data: target } = await admin
         .from('profiles')
-        .select('id, email, full_name, role, is_suspended')
+        .select('id, email, full_name, role, is_reviewer, is_suspended')
         .eq('email', rawEmail)
         .maybeSingle());
     }
@@ -109,14 +130,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `No account found for ${rawEmail}.` }, { status: 404 });
     }
 
-    // Student accounts only. Entering another admin would let a superadmin walk
-    // sideways into a peer's account, and entering a tutor is already covered by
-    // the separate "Enter as Tutor" path.
-    if (target.role !== 'student') {
+    // Entering yourself is the one case that does damage: the swap would
+    // overwrite your own session, and the return ticket would hold a refresh
+    // token that the swap has already spent.
+    if (actorEmail && target.email.toLowerCase() === actorEmail.toLowerCase()) {
       return NextResponse.json(
-        {
-          error: `${target.email} is a ${target.role} account. Only student accounts can be entered.`,
-        },
+        { error: 'That is your own account — you are already signed in as it.' },
         { status: 400 }
       );
     }
@@ -124,7 +143,7 @@ export async function POST(request: NextRequest) {
     const supabase = getCookieWritingClient();
 
     // Grab the admin's refresh token BEFORE the swap — a moment later these
-    // cookies belong to the student and the admin's token is unreachable.
+    // cookies belong to the target and the admin's token is unreachable.
     const {
       data: { session: adminSession },
     } = await supabase.auth.getSession();
@@ -148,8 +167,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Spending the token writes the student's session into the cookie jar,
-    // overwriting the admin's. From here the browser IS the student.
+    // Spending the token writes the target's session into the cookie jar,
+    // overwriting the admin's. From here the browser IS that user.
     const { data: verified, error: verifyError } = await supabase.auth.verifyOtp({
       token_hash: hashedToken,
       type: 'magiclink',
@@ -167,9 +186,10 @@ export async function POST(request: NextRequest) {
     }
 
     const state: ImpersonationState = {
-      studentId: target.id,
-      studentEmail: target.email,
-      studentName: target.full_name || target.email,
+      targetId: target.id,
+      targetEmail: target.email,
+      targetName: target.full_name || target.email,
+      targetRole: target.is_reviewer ? 'reviewer' : target.role || 'student',
       adminEmail: actorEmail ?? 'unknown admin',
       startedAt: new Date().toISOString(),
     };
@@ -206,6 +226,7 @@ export async function POST(request: NextRequest) {
         targetLabel: target.email,
         details: {
           role: target.role,
+          is_reviewer: Boolean(target.is_reviewer),
           is_suspended: target.is_suspended,
           full_session: true,
           can_return_without_login: Boolean(adminRefreshToken),
@@ -215,8 +236,13 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       ok: true,
-      redirectTo: '/student/dashboard',
-      student: { id: target.id, email: target.email, name: state.studentName },
+      redirectTo: landingPathFor(target),
+      account: {
+        id: target.id,
+        email: target.email,
+        name: state.targetName,
+        role: state.targetRole,
+      },
     });
   } catch (error: any) {
     console.error('[impersonate] enter failed:', error);
@@ -226,7 +252,7 @@ export async function POST(request: NextRequest) {
 
 /**
  * Exit. Deliberately NOT gated by requireAdmin: by now the session is the
- * student's, so an admin check would always fail. The gate is possession of the
+ * target's, so an admin check would always fail. The gate is possession of the
  * httpOnly return-ticket cookie, which only this route ever set and only the
  * admin's own browser holds.
  */
@@ -246,14 +272,14 @@ export async function DELETE() {
     return NextResponse.json({ ok: true, redirectTo: '/login', restored: false });
   }
 
-  // Swapping the student's cookies back for the admin's.
+  // Swapping the target's cookies back for the admin's.
   const { data, error } = await supabase.auth.refreshSession({
     refresh_token: adminRefreshToken,
   });
 
   if (error || !data?.session) {
     // The ticket expired or was already spent — fall back to a clean logout
-    // rather than leaving the browser sitting inside the student's account.
+    // rather than leaving the browser sitting inside the other account.
     await supabase.auth.signOut();
     clearCookies();
     return NextResponse.json({ ok: true, redirectTo: '/login', restored: false });

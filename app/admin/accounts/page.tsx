@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import AdminBreadcrumb from '@/components/admin/AdminBreadcrumb';
-import EnterStudentAccountCard from '@/components/admin/EnterStudentAccountCard';
+import EnterAccountCard from '@/components/admin/EnterAccountCard';
 import { useProfile } from '@/lib/hooks/useProfile';
 
 interface Account {
@@ -129,7 +129,7 @@ export default function AccountsPage() {
           <p className="text-gray-600 mt-2">View and manage all user accounts</p>
         </div>
 
-        <EnterStudentAccountCard />
+        <EnterAccountCard />
 
         {/* Filters */}
         <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">

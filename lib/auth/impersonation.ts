@@ -1,9 +1,10 @@
 // =====================================================
 // ADMIN IMPERSONATION — shared cookie contract
 // =====================================================
-// Entering a student account replaces the admin's session cookies with a real
-// session for that student: not a view-only mode, an actual login. Two cookies
-// survive the swap and are the only trace of it in the browser:
+// Entering an account replaces the admin's session cookies with a real session
+// for that user — student, parent, tutor, reviewer or another admin: not a
+// view-only mode, an actual login. Two cookies survive the swap and are the only
+// trace of it in the browser:
 //
 //   IMPERSONATION_COOKIE  readable by client JS. Carries only labels, so the
 //                         banner can say whose account this is. Never trusted
@@ -24,9 +25,11 @@ export const IMPERSONATOR_COOKIE = 'itutor_impersonator';
 export const IMPERSONATOR_COOKIE_MAX_AGE = 60 * 60 * 4; // 4 hours
 
 export interface ImpersonationState {
-  studentId: string;
-  studentEmail: string;
-  studentName: string;
+  targetId: string;
+  targetEmail: string;
+  targetName: string;
+  /** Role label for the banner only — 'student', 'tutor', 'reviewer', … */
+  targetRole: string;
   adminEmail: string;
   startedAt: string;
 }
@@ -35,13 +38,25 @@ export interface ImpersonationState {
  * Parse the readable impersonation cookie. Returns null on anything malformed —
  * a bad value means "not impersonating", never an exception, because this runs
  * in a banner that renders on every page.
+ *
+ * Also accepts the older student-only shape (studentId/studentEmail/…), so a
+ * session that started before this rename still gets its Exit button.
  */
 export function parseImpersonationState(raw: string | undefined | null): ImpersonationState | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(decodeURIComponent(raw));
-    if (!parsed?.studentId || !parsed?.studentEmail) return null;
-    return parsed as ImpersonationState;
+    const targetId = parsed?.targetId ?? parsed?.studentId;
+    const targetEmail = parsed?.targetEmail ?? parsed?.studentEmail;
+    if (!targetId || !targetEmail) return null;
+    return {
+      targetId,
+      targetEmail,
+      targetName: parsed?.targetName ?? parsed?.studentName ?? targetEmail,
+      targetRole: parsed?.targetRole ?? 'student',
+      adminEmail: parsed?.adminEmail ?? 'unknown admin',
+      startedAt: parsed?.startedAt ?? '',
+    };
   } catch {
     return null;
   }
