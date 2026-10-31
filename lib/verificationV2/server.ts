@@ -289,7 +289,8 @@ export function buildState(
       available,
     },
     submittedAt: row?.submitted_at ?? null,
-    decisionReason: row?.status === 'REJECTED' ? row.decision_reason : null,
+    // The reason an admin gave (one of a fixed list), for a rejection or a request for more information.
+    decisionReason: row?.status === 'REJECTED' || (row?.status === 'IN_PROGRESS' && row.decision_reason) ? row.decision_reason : null,
     reference: row ? `VR-${row.tutor_id.replace(/-/g, '').slice(0, 8).toUpperCase()}` : null,
     editable: !revokedProfile && isEditable(row),
     step,

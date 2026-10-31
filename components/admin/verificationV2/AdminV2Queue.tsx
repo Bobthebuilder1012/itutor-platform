@@ -8,12 +8,9 @@ import AdminBreadcrumb from '@/components/admin/AdminBreadcrumb';
 import { useProfile } from '@/lib/hooks/useProfile';
 
 const TABS: { status: string; label: string }[] = [
-  { status: 'IN_REVIEW', label: 'In review' },
-  { status: 'REVERIFICATION_REQUIRED', label: 'Reverification' },
-  { status: 'IN_PROGRESS', label: 'In progress' },
-  { status: 'REJECTED', label: 'Rejected' },
-  { status: 'VERIFIED', label: 'Verified' },
-  { status: 'REVOKED', label: 'Revoked' },
+  { status: 'review', label: 'Needs review' },
+  { status: 'waiting', label: 'Waiting on teacher' },
+  { status: 'done', label: 'Done' },
 ];
 
 export interface Item {
@@ -53,12 +50,12 @@ const IDENTITY_LABEL: Record<string, string> = {
 /** The queue's table with no fetching. Also used by the dev states gallery. */
 interface DiditTestResult {
   ok: boolean;
-  connection: { ok: boolean; status: number | null; message: string };
+  connection: { ok: boolean; status: number | null; message: string; sessionCreated?: boolean; hostedUrlReceived?: boolean };
   settings: { apiKey: boolean; workflowId: boolean; workflowIdLooksValid: boolean; webhookSecret: boolean };
   notes: string[];
 }
 
-/** Admin only. Calls a read-only Didit endpoint; creates no session and shows no secret. */
+/** Admin only. Creates and deletes a throwaway sandbox session; shows pass or fail, never a secret. */
 function DiditTest() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<DiditTestResult | null>(null);
@@ -122,8 +119,8 @@ export function QueueTable({ items, status, loading = false }: { items: Item[]; 
         </div>
       ) : items.length === 0 ? (
         <div className="text-center py-16 bg-gray-50 border-2 border-gray-200 rounded-lg">
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">No applications here</h2>
-          <p className="text-gray-600">Applications with this status will appear in this list.</p>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Nothing here</h2>
+          <p className="text-gray-600">Applications will appear in this list as teachers send them in.</p>
         </div>
       ) : (
         <div className="bg-white border-2 border-gray-200 rounded-lg overflow-hidden overflow-x-auto">
@@ -134,7 +131,7 @@ export function QueueTable({ items, status, loading = false }: { items: Item[]; 
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Identity</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Credentials</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Extras</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{status === 'IN_REVIEW' ? 'Submitted' : 'Decided'}</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{status === 'review' ? 'Submitted' : 'Updated'}</th>
               <th className="px-4 py-3" />
             </tr>
           </thead>
@@ -149,7 +146,7 @@ export function QueueTable({ items, status, loading = false }: { items: Item[]; 
                 {/* A zero is never shown. */}
                 <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">{i.credentialCount > 0 ? i.credentialCount : '—'}</td>
                 <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">{i.extraCount > 0 ? i.extraCount : '—'}</td>
-                <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">{fmt(status === 'IN_REVIEW' ? i.submittedAt : i.decidedAt)}</td>
+                <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">{fmt(status === 'review' ? i.submittedAt : i.decidedAt ?? i.submittedAt)}</td>
                 <td className="px-4 py-4 whitespace-nowrap text-right text-sm font-medium">
                   <Link href={`/admin/verification-v2/${i.tutorId}`} className="text-itutor-green hover:text-emerald-700 font-semibold">
                     Review
@@ -168,7 +165,8 @@ export function QueueTable({ items, status, loading = false }: { items: Item[]; 
 export default function AdminV2Queue() {
   const { profile, loading: profileLoading } = useProfile();
   const router = useRouter();
-  const [status, setStatus] = useState('IN_REVIEW');
+  const [status, setStatus] = useState('review');
+  const [counts, setCounts] = useState<Record<string, number>>({});
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -178,11 +176,12 @@ export default function AdminV2Queue() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/admin/verification-v2/queue?status=${status}`, { cache: 'no-store' });
+      const res = await fetch(`/api/admin/verification-v2/queue?tab=${status}`, { cache: 'no-store' });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error || 'Could not load the queue');
       setItems(body.items);
       setSetup(body.setup ?? []);
+      setCounts(body.counts ?? {});
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -224,6 +223,8 @@ export default function AdminV2Queue() {
               }`}
             >
               {t.label}
+              {/* A zero is never shown. */}
+              {counts[t.status] > 0 ? ` (${counts[t.status]})` : ''}
             </button>
           ))}
         </div>

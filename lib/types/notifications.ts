@@ -19,6 +19,7 @@ export type NotificationType =
   | 'VERIFICATION_IN_REVIEW'
   | 'VERIFICATION_REVERIFICATION_REQUIRED'
   | 'VERIFICATION_CHECK_FAILED'
+  | 'VERIFICATION_MORE_INFO'
   | 'class_renewal_rate_prompt'
   | 'NEW_REVIEW'
   | 'join_request'
@@ -114,6 +115,7 @@ export function getNotificationIcon(type: NotificationType): string {
     case 'VERIFICATION_CHECK_FAILED':
       return '⚠️';
     case 'VERIFICATION_IN_REVIEW':
+    case 'VERIFICATION_MORE_INFO':
     case 'VERIFICATION_REVERIFICATION_REQUIRED':
       return '🛡️';
     case 'class_renewal_rate_prompt':
@@ -146,6 +148,7 @@ export function getNotificationColor(type: NotificationType): string {
     case 'VERIFICATION_CHECK_FAILED':
       return 'bg-red-500/20 text-red-400';
     case 'VERIFICATION_IN_REVIEW':
+    case 'VERIFICATION_MORE_INFO':
     case 'VERIFICATION_REVERIFICATION_REQUIRED':
       return 'bg-blue-500/20 text-blue-400';
     case 'booking_declined':

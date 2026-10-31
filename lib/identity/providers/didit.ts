@@ -16,7 +16,8 @@
 //   createSession   POST /v3/session/            implemented
 //   getOutcome      GET  /v3/session/{id}/decision/  implemented (4.5 s limit: Didit gives a
 //                   webhook 5 s to answer, and the webhook handler calls this)
-//   ping            GET  /v3/sessions/?limit=1       read-only connection test (admin button)
+//   ping            GET  /v3/sessions/?limit=1       read-only key check (production fallback of the admin button)
+//   connectionTest  POST /v3/session/ then DELETE    throwaway sandbox session (admin button, non-production)
 //   redact          DELETE /v3/session/{id}/delete/  implemented
 //   verifyWebhook   X-Signature-V2 (recommended), then X-Signature (raw bytes), in
 //                   Didit's own order, both HMAC-SHA256 hex with the destination
@@ -54,6 +55,7 @@ import { createHmac, timingSafeEqual } from 'crypto';
 import { identityRouting } from '@/config/identityRouting';
 import { mapDiditDecision } from '../mapping';
 import { diditWorkflowId } from '../diditConfig';
+import { isProductionRuntime } from '@/lib/email/allowlist';
 import {
   WebhookSignatureError,
   type CreatedSession,
@@ -215,6 +217,70 @@ export async function diditPing(): Promise<DiditPing> {
     return { ok: false, status: res.status, message: `Didit answered with an unexpected status (${res.status}).` };
   } catch {
     return { ok: false, status: null, message: 'Could not reach Didit (network error or timeout).' };
+  }
+}
+
+export interface DiditConnectionTest extends DiditPing {
+  /** True when a throwaway session was created (so the whole create path works). */
+  sessionCreated: boolean;
+  /** True when Didit returned a hosted verification URL. The URL itself is never returned. */
+  hostedUrlReceived: boolean;
+}
+
+/**
+ * The admin "Test Didit connection" button. Outside production it creates a THROWAWAY
+ * session from the same call the teacher flow makes (so it proves the key, the workflow and
+ * the create path), checks that a hosted URL came back, then deletes the session again.
+ * Nothing is verified: nobody opens the link. It returns pass or fail and a plain sentence,
+ * never the key, the session token or the URL.
+ *
+ * In production, or when DIDIT_EXPECT_ENVIRONMENT is "live", it will NOT create a session
+ * and falls back to the read-only check (diditPing).
+ */
+export async function diditConnectionTest(): Promise<DiditConnectionTest> {
+  const readOnly = async (note?: string): Promise<DiditConnectionTest> => {
+    const ping = await diditPing();
+    return { ...ping, message: note ? `${note} ${ping.message}` : ping.message, sessionCreated: false, hostedUrlReceived: false };
+  };
+  if (!process.env.DIDIT_API_KEY) return { ok: false, status: null, message: 'DIDIT_API_KEY is not set.', sessionCreated: false, hostedUrlReceived: false };
+  if (isProductionRuntime() || process.env.DIDIT_EXPECT_ENVIRONMENT === 'live') {
+    return readOnly('Production or live mode: no test session is created, so only the key was checked.');
+  }
+
+  let sessionId: string | null = null;
+  try {
+    const res = await diditFetch('/v3/session/', {
+      method: 'POST',
+      timeoutMs: 8_000,
+      body: { workflow_id: diditWorkflowId(), vendor_data: 'itutor-connection-test', metadata: { purpose: 'connection test' } },
+    });
+    if (res.status === 401 || res.status === 403) {
+      return { ok: false, status: res.status, sessionCreated: false, hostedUrlReceived: false, message: 'Didit refused the API key. Check it is the sandbox key and can create sessions.' };
+    }
+    if (!res.ok) {
+      return { ok: false, status: res.status, sessionCreated: false, hostedUrlReceived: false, message: `Didit could not create a session (${res.status})${await safeDetail(res)}. Check DIDIT_WORKFLOW_ID.` };
+    }
+    const body = (await res.json()) as { session_id?: string; url?: string };
+    sessionId = body.session_id ?? null;
+    const hosted = typeof body.url === 'string' && body.url.startsWith('https://');
+    return {
+      ok: !!sessionId && hosted,
+      status: res.status,
+      sessionCreated: !!sessionId,
+      hostedUrlReceived: hosted,
+      message: sessionId && hosted ? 'Didit created a test session and returned a verification link. The test session was then deleted.' : 'Didit answered but did not return a session and a verification link.',
+    };
+  } catch {
+    return { ok: false, status: null, sessionCreated: false, hostedUrlReceived: false, message: 'Could not reach Didit (network error or timeout).' };
+  } finally {
+    // Clean up the throwaway session. A failure here is not worth reporting.
+    if (sessionId) {
+      await diditFetch(`/v3/session/${encodeURIComponent(sessionId)}/delete/`, {
+        method: 'DELETE',
+        timeoutMs: 6_000,
+        body: { deletion_instruction: 'operational_session_delete', instruction_id: `itutor-connection-test-${sessionId}`.slice(0, 255) },
+      }).catch(() => undefined);
+    }
   }
 }
 

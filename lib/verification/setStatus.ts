@@ -203,7 +203,7 @@ export async function setV2Status(opts: {
     patch.decision_reason = null;
     patch.decided_by = null;
     patch.decided_at = null;
-  } else if (opts.to === 'VERIFIED' || opts.to === 'REJECTED' || opts.to === 'REVOKED') {
+  } else if (opts.to === 'VERIFIED' || opts.to === 'REJECTED' || opts.to === 'REVOKED' || opts.to === 'IN_PROGRESS') {
     patch.decision_reason = opts.reason ?? null;
     patch.decided_by = opts.reviewerId ?? null;
     patch.decided_at = now();

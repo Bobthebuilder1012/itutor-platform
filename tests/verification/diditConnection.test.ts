@@ -5,7 +5,7 @@ const h = vi.hoisted(() => ({ guard: null as any }));
 vi.mock('@/lib/verificationV2/adminGuard', () => ({ guardAdminV2: async () => h.guard }));
 vi.mock('@/lib/supabase/server', () => ({ getServiceClient: () => ({}) }));
 
-import { diditCanonicalJson, diditPing, diditProvider, verifyDiditWebhookSignature } from '@/lib/identity/providers/didit';
+import { diditCanonicalJson, diditConnectionTest, diditPing, diditProvider, verifyDiditWebhookSignature } from '@/lib/identity/providers/didit';
 import { POST as testRoute } from '@/app/api/admin/verification-v2/didit-test/route';
 import { WebhookSignatureError } from '@/lib/identity/types';
 
@@ -178,7 +178,53 @@ describe('the Didit connection test', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('outside production the connection test creates a throwaway session, sees the link, and deletes it', async () => {
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, status: 201, json: async () => ({ session_id: 'sess-1', url: 'https://verify.didit.me/s/abc', session_token: 'TOKEN-SECRET' }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({}) });
+    const r = await diditConnectionTest();
+    expect(r).toMatchObject({ ok: true, sessionCreated: true, hostedUrlReceived: true });
+    expect(fetchMock.mock.calls[0][0]).toBe('https://verification.didit.me/v3/session/');
+    expect(fetchMock.mock.calls[0][1].method).toBe('POST');
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).vendor_data).toBe('itutor-connection-test');
+    expect(fetchMock.mock.calls[1][0]).toContain('/v3/session/sess-1/delete/');
+    expect(fetchMock.mock.calls[1][1].method).toBe('DELETE');
+    const text = JSON.stringify(r);
+    for (const secret of [KEY, 'TOKEN-SECRET', 'verify.didit.me', 'sess-1']) expect(text).not.toContain(secret);
+  });
+
+  it('the connection test fails plainly on a refused key, a bad workflow, a missing link and a network error', async () => {
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 403, json: async () => ({}) });
+    expect((await diditConnectionTest()).message).toMatch(/refused the API key/);
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({ detail: 'Workflow not found.' }) });
+    const bad = await diditConnectionTest();
+    expect(bad).toMatchObject({ ok: false, sessionCreated: false });
+    expect(bad.message).toContain('DIDIT_WORKFLOW_ID');
+    fetchMock.mockResolvedValueOnce({ ok: true, status: 201, json: async () => ({ session_id: 's2' }) }).mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({}) });
+    expect(await diditConnectionTest()).toMatchObject({ ok: false, sessionCreated: true, hostedUrlReceived: false });
+    fetchMock.mockRejectedValueOnce(new Error('boom'));
+    expect((await diditConnectionTest()).message).toMatch(/Could not reach Didit/);
+  });
+
+  it('in production, or in live mode, it never creates a session: only the read-only key check runs', async () => {
+    for (const env of [{ VERCEL_ENV: 'production' }, { VERCEL_ENV: 'preview', DIDIT_EXPECT_ENVIRONMENT: 'live' }]) {
+      fetchMock.mockReset();
+      for (const [k, v] of Object.entries(env)) vi.stubEnv(k, v);
+      fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+      const r = await diditConnectionTest();
+      expect(r.sessionCreated).toBe(false);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls[0][0]).toContain('/v3/sessions/?limit=1');
+      expect(fetchMock.mock.calls[0][1].method).toBe('GET');
+      vi.unstubAllEnvs();
+      vi.stubEnv('DIDIT_API_KEY', KEY);
+    }
+  });
+
   it('the admin route reports ok when connected and fully configured, and shows no secret', async () => {
+    vi.stubEnv('VERCEL_ENV', 'production'); // read-only path for this assertion
     fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
     const res = await testRoute();
     const body = await res.json();

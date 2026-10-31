@@ -182,10 +182,11 @@ export default function VerificationV2Flow() {
             hint={completed === REQUIRED ? 'Ready to send for review' : `${REQUIRED - completed} more to go`}
           />
 
-          {state.status === 'REJECTED' && state.decisionReason && (
+          {(state.status === 'REJECTED' || state.status === 'IN_PROGRESS') && state.decisionReason && (
             <Notice>
-              <p className="font-semibold">Previous decision</p>
+              <p className="font-semibold">{state.status === 'REJECTED' ? 'Previous decision' : 'We need more information'}</p>
               <p className="mt-1">{state.decisionReason}</p>
+              {state.status === 'IN_PROGRESS' && <p className="mt-1">Update your application, then send it again.</p>}
             </Notice>
           )}
 

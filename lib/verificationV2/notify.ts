@@ -5,6 +5,7 @@
 //   in_review                  submitted for review
 //   verified                   approved                        (type VERIFICATION_APPROVED)
 //   rejected     + reason      not approved                    (type VERIFICATION_REJECTED)
+//   more_info    + reason      sent back to the teacher        (type VERIFICATION_MORE_INFO)
 //   revoked      + reason      verification taken away         (type VERIFICATION_REVOKED)
 //   reverification_required    asked to verify again
 //   identity_failed + attempts left   the ID check did not pass
@@ -38,6 +39,7 @@ export type NoticeKind =
   | 'in_review'
   | 'verified'
   | 'rejected'
+  | 'more_info'
   | 'revoked'
   | 'reverification_required'
   | 'identity_failed';
@@ -46,6 +48,7 @@ export type TeacherNotice =
   | { kind: 'in_review' }
   | { kind: 'verified' }
   | { kind: 'rejected'; reason: string | null }
+  | { kind: 'more_info'; reason: string | null }
   | { kind: 'revoked'; reason: string | null }
   | { kind: 'reverification_required' }
   | { kind: 'identity_failed'; status: 'retryable_failure' | 'not_supported' | 'consent_declined'; reason: string | null };
@@ -86,6 +89,14 @@ export function buildNotice(
         message: notice.reason
           ? `Reason: ${clip(notice.reason)} You can edit your application and submit it again.`
           : 'You can edit your application and submit it again.',
+      };
+    case 'more_info':
+      return {
+        type: 'VERIFICATION_MORE_INFO',
+        title: 'We need more information',
+        message: notice.reason
+          ? `Reason: ${clip(notice.reason)} Update your application and send it again.`
+          : 'Update your application and send it again.',
       };
     case 'revoked':
       return {

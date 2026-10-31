@@ -1,4 +1,8 @@
-// GET /api/admin/verification-v2/queue?status=IN_REVIEW|REVERIFICATION_REQUIRED|REJECTED|VERIFIED|REVOKED|IN_PROGRESS
+// GET /api/admin/verification-v2/queue?tab=review|waiting|done        (what the screen uses)
+//   review   applications in review                      (needs an admin)
+//   waiting  sent back, rejected, or asked to verify again (needs the teacher)
+//   done     verified or revoked
+// Also returns `counts` for the three tabs. Or ?status=IN_REVIEW|REVERIFICATION_REQUIRED|REJECTED|VERIFIED|REVOKED|IN_PROGRESS.
 // The v2 applications, oldest submission first, with just enough to pick one.
 // No ID images exist in v2 (the identity provider holds them), and none are returned.
 // Also returns `setup`: which identity-provider settings are missing (names only).
@@ -12,21 +16,51 @@ export const dynamic = 'force-dynamic';
 
 const STATUSES = ['IN_PROGRESS', 'IN_REVIEW', 'VERIFIED', 'REJECTED', 'REVOKED', 'REVERIFICATION_REQUIRED'];
 
+type Row = { status: string; decision_reason?: string | null };
+const TABS: Record<string, (r: Row) => boolean> = {
+  review: (r) => r.status === 'IN_REVIEW',
+  // A teacher who is merely part-way through the form is not "waiting": they were not asked for anything.
+  waiting: (r) =>
+    r.status === 'REJECTED' || r.status === 'REVERIFICATION_REQUIRED' || (r.status === 'IN_PROGRESS' && !!r.decision_reason),
+  done: (r) => r.status === 'VERIFIED' || r.status === 'REVOKED',
+};
+
 export async function GET(request: NextRequest) {
   const g = await guardAdminV2();
   if (g.error) return g.error;
 
-  const status = new URL(request.url).searchParams.get('status') ?? 'IN_REVIEW';
-  if (!STATUSES.includes(status)) {
+  const params = new URL(request.url).searchParams;
+  const tab = params.get('tab');
+  if (tab && !(tab in TABS)) return NextResponse.json({ error: 'Unknown tab' }, { status: 400 });
+  const status = tab ?? params.get('status') ?? 'IN_REVIEW';
+  if (!tab && !STATUSES.includes(status)) {
     return NextResponse.json({ error: 'Unknown status' }, { status: 400 });
   }
 
-  const { data: rows, error } = await g.db
-    .from('tutor_verification_v2')
-    .select('tutor_id, status, identity_status, submitted_at, decided_at, created_at')
-    .eq('status', status)
-    .order('submitted_at', { ascending: true })
-    .limit(100);
+  let rows: any[] | null;
+  let error: any;
+  let counts: Record<string, number> | undefined;
+  if (tab) {
+    const all = await g.db
+      .from('tutor_verification_v2')
+      .select('tutor_id, status, identity_status, submitted_at, decided_at, created_at, decision_reason')
+      .in('status', STATUSES)
+      .order('submitted_at', { ascending: true })
+      .limit(1000);
+    error = all.error;
+    const list: any[] = all.data ?? [];
+    counts = Object.fromEntries(Object.entries(TABS).map(([k, test]) => [k, list.filter(test).length]));
+    rows = list.filter(TABS[tab]).slice(0, 100);
+  } else {
+    const one = await g.db
+      .from('tutor_verification_v2')
+      .select('tutor_id, status, identity_status, submitted_at, decided_at, created_at')
+      .eq('status', status)
+      .order('submitted_at', { ascending: true })
+      .limit(100);
+    rows = one.data;
+    error = one.error;
+  }
   const setup = schemaNotReady(error);
   if (setup) return setup;
   if (error) {
@@ -52,6 +86,7 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     status,
+    ...(counts ? { counts } : {}),
     setup: identitySetupProblems(),
     items: (rows ?? []).map((r: any) => ({
       tutorId: r.tutor_id,

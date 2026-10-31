@@ -668,7 +668,8 @@ DECLARE
   v_name constant text := 'notifications_type_check';
   v_needed text[] := ARRAY[
     'VERIFICATION_APPROVED', 'VERIFICATION_REJECTED', 'VERIFICATION_REVOKED',
-    'VERIFICATION_IN_REVIEW', 'VERIFICATION_REVERIFICATION_REQUIRED', 'VERIFICATION_CHECK_FAILED'
+    'VERIFICATION_IN_REVIEW', 'VERIFICATION_REVERIFICATION_REQUIRED', 'VERIFICATION_CHECK_FAILED',
+    'VERIFICATION_MORE_INFO'
   ];
   v_missing text[] := ARRAY[]::text[];
   v_def text;
@@ -830,7 +831,7 @@ CREATE TABLE IF NOT EXISTS public.tutor_verification_v2_decisions (
   actor_id uuid,
   actor_role text NOT NULL CHECK (actor_role IN ('admin', 'reviewer', 'system')),
   action text NOT NULL
-    CHECK (action IN ('APPROVE', 'REJECT', 'REVOKE', 'REQUIRE_REVERIFICATION')),
+    CHECK (action IN ('APPROVE', 'REJECT', 'REVOKE', 'REQUIRE_REVERIFICATION', 'REQUEST_INFO')),
   from_status text,
   to_status text,
   -- What the same decision did to profiles.tutor_verification_status.

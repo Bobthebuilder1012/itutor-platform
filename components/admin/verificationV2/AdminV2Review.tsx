@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import AdminBreadcrumb from '@/components/admin/AdminBreadcrumb';
 import { useProfile } from '@/lib/hooks/useProfile';
+import { DECISION_REASONS } from '@/lib/verificationV2/reasons';
 
 export interface ReviewDetail {
   tutor: { id: string; name: string | null; email: string | null; profileStatus: string | null };
@@ -38,21 +39,37 @@ export interface ReviewDetail {
 
 const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : '—');
 
+const IDENTITY_SUMMARY: Record<string, string> = {
+  verified: 'Passed',
+  pending: 'Started',
+  processing: 'In review at the provider',
+  retryable_failure: 'Failed',
+  not_supported: 'Could not be checked',
+  consent_declined: 'Declined',
+  canceled: 'Cancelled',
+};
+
 /** The review page's content with no fetching. Also used by the dev states gallery. */
 export function ReviewView({
   detail,
   isAdmin,
   reason,
   onReason,
+  note = '',
+  onNote = () => {},
   busy,
   onAct,
 }: {
   detail: ReviewDetail;
   isAdmin: boolean;
+  /** One of the fixed reasons (lib/verificationV2/reasons.ts), or ''. */
   reason: string;
   onReason: (v: string) => void;
+  /** Internal: never shown to the teacher. */
+  note?: string;
+  onNote?: (v: string) => void;
   busy: boolean;
-  onAct: (action: 'approve' | 'reject' | 'revoke') => void;
+  onAct: (action: 'approve' | 'reject' | 'revoke' | 'request-info') => void;
 }) {
   const status = detail.application.status;
   const canDecide = status === 'IN_REVIEW';
@@ -77,7 +94,7 @@ export function ReviewView({
         <p className="mt-1 text-sm">
           Result:{' '}
           <span className={id.status === 'verified' ? 'font-semibold text-green-700' : 'font-semibold text-red-700'}>
-            {id.status ?? 'not started'}
+            {id.status ? IDENTITY_SUMMARY[id.status] ?? id.status : 'Not checked'}
           </span>
           {id.errorCode && <> ({id.errorCode})</>}{id.attempts > 0 && <> · {id.attempts} attempt(s)</>}
           {id.provider && (
@@ -143,22 +160,45 @@ export function ReviewView({
       {(canDecide || canRevoke) && (
         <section className="bg-white border-2 border-gray-200 rounded-lg p-6">
           <h2 className="text-xl font-bold text-gray-900 mb-4">Decision</h2>
-          <textarea
+          {/* Approving needs no reason. The other three need one from the fixed list: it is what the
+              teacher is told. The note is for admins only. */}
+          <label htmlFor="decision-reason" className="block text-sm font-medium text-gray-700 mb-1">
+            Reason the teacher will see (needed to ask for more information, reject or revoke)
+          </label>
+          <select
+            id="decision-reason"
             value={reason}
             onChange={(e) => onReason(e.target.value)}
+            className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm text-gray-900 focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none"
+          >
+            <option value="">Choose a reason</option>
+            {DECISION_REASONS.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </select>
+          <label htmlFor="decision-note" className="mt-4 block text-sm font-medium text-gray-700 mb-1">
+            Internal note (optional, never shown to the teacher)
+          </label>
+          <textarea
+            id="decision-note"
+            value={note}
+            onChange={(e) => onNote(e.target.value)}
             rows={3}
-            placeholder={canDecide ? 'Reason (required to reject; recorded in the audit log)' : 'Reason for revoking (required)'}
-            className="mt-3 w-full rounded-lg border border-gray-300 p-3 text-sm"
+            maxLength={500}
+            className="w-full rounded-lg border-2 border-gray-300 p-3 text-sm focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none"
           />
-          <div className="mt-3 flex flex-wrap gap-3">
+          <div className="mt-4 flex flex-wrap gap-3">
             {canDecide && (
               <>
                 <button onClick={() => onAct('approve')} disabled={busy} className="rounded-lg bg-itutor-green px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50">Approve</button>
-                <button onClick={() => onAct('reject')} disabled={busy} className="rounded-lg border border-red-300 bg-white px-5 py-2.5 text-sm font-semibold text-red-700 disabled:opacity-50">Reject</button>
+                <button onClick={() => onAct('request-info')} disabled={busy} className="rounded-lg border-2 border-gray-300 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50">Ask for more info</button>
+                <button onClick={() => onAct('reject')} disabled={busy} className="rounded-lg border-2 border-red-300 bg-white px-5 py-2.5 text-sm font-semibold text-red-700 disabled:opacity-50">Reject</button>
               </>
             )}
             {canRevoke && (
-              <button onClick={() => onAct('revoke')} disabled={busy} className="rounded-lg border border-red-300 bg-white px-5 py-2.5 text-sm font-semibold text-red-700 disabled:opacity-50">Revoke verification</button>
+              <button onClick={() => onAct('revoke')} disabled={busy} className="rounded-lg border-2 border-red-300 bg-white px-5 py-2.5 text-sm font-semibold text-red-700 disabled:opacity-50">Revoke verification</button>
             )}
           </div>
         </section>
@@ -187,6 +227,7 @@ export default function AdminV2Review({ tutorId }: { tutorId: string }) {
   const [detail, setDetail] = useState<ReviewDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reason, setReason] = useState('');
+  const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -210,12 +251,13 @@ export default function AdminV2Review({ tutorId }: { tutorId: string }) {
     void load();
   }, [profile, profileLoading, router, load]);
 
-  async function act(action: 'approve' | 'reject' | 'revoke') {
-    if ((action === 'reject' || action === 'revoke') && !reason.trim()) {
-      setError('A reason is required.');
+  async function act(action: 'approve' | 'reject' | 'revoke' | 'request-info') {
+    if (action !== 'approve' && !reason) {
+      setError('Choose a reason from the list.');
       return;
     }
-    if (!confirm(`${action[0]!.toUpperCase() + action.slice(1)} this teacher?`)) return;
+    const verb = action === 'request-info' ? 'Ask for more information from' : action[0]!.toUpperCase() + action.slice(1);
+    if (!confirm(`${verb} this teacher?`)) return;
     setBusy(true);
     setError(null);
     setMessage(null);
@@ -223,16 +265,19 @@ export default function AdminV2Review({ tutorId }: { tutorId: string }) {
       const res = await fetch(`/api/admin/verification-v2/${tutorId}/${action}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason }),
+        body: JSON.stringify({ reason, note }),
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error || 'Failed');
       setMessage(
         body.profile?.to === null && action === 'reject'
           ? 'Rejected. The teacher stays verified; use revoke to remove verified status.'
-          : `Done: ${action}d.`
+          : action === 'request-info'
+            ? 'Sent back to the teacher, who has been told.'
+            : `Done: ${action}d.`
       );
       setReason('');
+      setNote('');
       await load();
     } catch (e) {
       setError((e as Error).message);
@@ -254,7 +299,7 @@ export default function AdminV2Review({ tutorId }: { tutorId: string }) {
         {!detail && !error && <p className="text-sm text-gray-500">Loading…</p>}
         {error && <div role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div>}
         {message && <div className="mb-4 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800">{message}</div>}
-        {detail && <ReviewView detail={detail} isAdmin={isAdmin} reason={reason} onReason={setReason} busy={busy} onAct={act} />}
+        {detail && <ReviewView detail={detail} isAdmin={isAdmin} reason={reason} onReason={setReason} note={note} onNote={setNote} busy={busy} onAct={act} />}
       </div>
     </DashboardLayout>
   );

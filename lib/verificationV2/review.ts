@@ -28,6 +28,7 @@ import type { RedactResult } from './redaction';
 import type { DeletionResult } from './fileDeletion';
 import { afterApproval, afterRejection, afterRevocation } from './afterDecision';
 import { notifyTeacher, type NotifyStatus } from './notify';
+import { auditReason } from './reasons';
 
 export type ReviewActor = Extract<VerificationActor, 'reviewer' | 'admin'>;
 
@@ -58,7 +59,7 @@ const fail = (
   httpStatus = 409
 ): ReviewFailure => ({ ok: false, code, message, httpStatus });
 
-type AuditAction = 'APPROVE' | 'REJECT' | 'REVOKE' | 'REQUIRE_REVERIFICATION';
+type AuditAction = 'APPROVE' | 'REJECT' | 'REVOKE' | 'REQUIRE_REVERIFICATION' | 'REQUEST_INFO';
 
 /** Appends to the audit table. Returns an error string, or null. */
 export async function recordDecision(
@@ -197,7 +198,8 @@ export async function approveV2(ctx: ReviewCtx, tutorId: string): Promise<Review
 export async function rejectV2(
   ctx: ReviewCtx,
   tutorId: string,
-  reason: string
+  reason: string,
+  note?: string | null
 ): Promise<ReviewSuccess | ReviewFailure> {
   const db = ctx.db ?? (getServiceClient() as Db);
   const why = (reason ?? '').trim();
@@ -239,7 +241,7 @@ export async function rejectV2(
   const notified = await notifyTeacher(db, tutorId, { kind: 'rejected', reason: why });
 
   const auditError = await recordDecision(db, {
-    tutorId, actor: ctx.actor, actorId: ctx.actorId, action: 'REJECT', reason: why,
+    tutorId, actor: ctx.actor, actorId: ctx.actorId, action: 'REJECT', reason: auditReason(why, note),
     from: row.status, to: 'REJECTED', profileFrom: normalizeStatus('profile', prof.status), profileTo,
   });
   if (auditError) {
@@ -262,12 +264,65 @@ export async function rejectV2(
 }
 
 // ---------------------------------------------------------------
+// ask for more information
+// ---------------------------------------------------------------
+/**
+ * Sends an application that is IN_REVIEW back to the teacher with a reason (from the fixed
+ * list). The teacher's profile status is not touched: they were not rejected. They see the
+ * reason on their verification page, change what is needed and send it again.
+ */
+export async function requestInfoV2(
+  ctx: ReviewCtx,
+  tutorId: string,
+  reason: string,
+  note?: string | null
+): Promise<ReviewSuccess | ReviewFailure> {
+  const db = ctx.db ?? (getServiceClient() as Db);
+  const why = (reason ?? '').trim();
+  if (!why) return fail('reason_required', 'Choose what you need from the teacher.', 400);
+
+  const { row, error } = await loadV2(db, tutorId);
+  if (error) return dbFail('Could not read the application');
+  if (!row) return notFound('No application found for this teacher');
+
+  // Only an application that is actually in review can be sent back (IN_PROGRESS to IN_PROGRESS is a no-op the map allows).
+  if (row.status !== 'IN_REVIEW') {
+    return { ok: false, code: 'transition_not_allowed', message: 'Only an application that is in review can be sent back.', httpStatus: 409 };
+  }
+  const check = checkTransition('v2', row.status, 'IN_PROGRESS', ctx.actor);
+  if (!check.ok) return refusal(check);
+
+  const v2 = await setV2Status({ tutorId, to: 'IN_PROGRESS', actor: ctx.actor, reviewerId: ctx.actorId, reason: why, db });
+  if (!v2.ok) return v2;
+
+  const notified = await notifyTeacher(db, tutorId, { kind: 'more_info', reason: why });
+
+  const auditError = await recordDecision(db, {
+    tutorId, actor: ctx.actor, actorId: ctx.actorId, action: 'REQUEST_INFO', reason: auditReason(why, note),
+    from: row.status, to: 'IN_PROGRESS', profileFrom: null, profileTo: null,
+  });
+  if (auditError) {
+    console.error(`[verification-v2/review] ${tutorId}: sent back, but the audit record failed: ${auditError}`);
+    return { ok: false, code: 'db_error', message: 'Sent back, but the decision record could not be saved.', httpStatus: 500, partial: true };
+  }
+
+  return {
+    ok: true,
+    from: row.status,
+    to: 'IN_PROGRESS',
+    profile: { from: '', to: null, changed: false },
+    notification: notified.status,
+  };
+}
+
+// ---------------------------------------------------------------
 // revoke
 // ---------------------------------------------------------------
 export async function revokeV2(
   ctx: ReviewCtx,
   tutorId: string,
-  reason: string
+  reason: string,
+  note?: string | null
 ): Promise<ReviewSuccess | ReviewFailure> {
   const db = ctx.db ?? (getServiceClient() as Db);
   const why = (reason ?? '').trim();
@@ -314,7 +369,7 @@ export async function revokeV2(
   }
 
   const auditError = await recordDecision(db, {
-    tutorId, actor: ctx.actor, actorId: ctx.actorId, action: 'REVOKE', reason: why,
+    tutorId, actor: ctx.actor, actorId: ctx.actorId, action: 'REVOKE', reason: auditReason(why, note),
     from: row?.status ?? null, to: row?.status === 'VERIFIED' ? 'REVOKED' : null,
     profileFrom: normalizeStatus('profile', prof.status), profileTo: 'REVOKED',
   });

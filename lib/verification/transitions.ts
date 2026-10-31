@@ -74,7 +74,9 @@ const MAPS: Record<TransitionEntity, Edges> = {
   },
   v2: {
     IN_PROGRESS: { IN_REVIEW: ['tutor'], REVERIFICATION_REQUIRED: ['admin'] },
-    IN_REVIEW: { VERIFIED: STAFF, REJECTED: STAFF, REVERIFICATION_REQUIRED: ['admin'] },
+    // IN_PROGRESS from IN_REVIEW is "ask for more information": the application goes back to the
+    // teacher with a reason, and they send it again.
+    IN_REVIEW: { VERIFIED: STAFF, REJECTED: STAFF, IN_PROGRESS: STAFF, REVERIFICATION_REQUIRED: ['admin'] },
     VERIFIED: { REVOKED: REVOKE, REVERIFICATION_REQUIRED: ['admin'] },
     REJECTED: { IN_REVIEW: ['tutor'], REVERIFICATION_REQUIRED: ['admin'] },
     // TODO(policy, undecided): whether a teacher sent back here must redo the

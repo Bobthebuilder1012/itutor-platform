@@ -62,8 +62,8 @@ const ALL = [
   ['queue', () => queueGET(req('/api/admin/verification-v2/queue'))],
   ['detail', () => detailGET(req('/x'), params)],
   ['approve', () => approvePOST(req('/x', json({})), params)],
-  ['reject', () => rejectPOST(req('/x', json({ reason: 'r' })), params)],
-  ['revoke', () => revokePOST(req('/x', json({ reason: 'r' })), params)],
+  ['reject', () => rejectPOST(req('/x', json({ reason: 'Other' })), params)],
+  ['revoke', () => revokePOST(req('/x', json({ reason: 'Other' })), params)],
   ['reverify', () => reverifyPOST(req('/x', json({ scope: 'verified' })))],
   ['cleanup', () => cleanupPOST(req('/x', json({})))],
 ] as const;
@@ -107,13 +107,13 @@ describe('role rules', () => {
     expect((await approvePOST(req('/x', json({})), params)).status).toBe(200);
     seed();
     asAdmin(REVIEWER);
-    expect((await rejectPOST(req('/x', json({ reason: 'bad' })), params)).status).toBe(200);
+    expect((await rejectPOST(req('/x', json({ reason: 'Other' })), params)).status).toBe(200);
   });
 
   it('a reviewer who is not an admin cannot revoke, reverify or run cleanup (403)', async () => {
     seed({ profile: 'VERIFIED', v2: 'VERIFIED' });
     asAdmin(REVIEWER);
-    expect((await revokePOST(req('/x', json({ reason: 'r' })), params)).status).toBe(403);
+    expect((await revokePOST(req('/x', json({ reason: 'Other' })), params)).status).toBe(403);
     expect((await reverifyPOST(req('/x', json({ scope: 'verified', apply: true })))).status).toBe(403);
     expect((await cleanupPOST(req('/x', json({ apply: true })))).status).toBe(403);
     expect(h.db.tables.profiles[0].tutor_verification_status).toBe('VERIFIED');
@@ -121,7 +121,7 @@ describe('role rules', () => {
 
   it('an admin can revoke', async () => {
     seed({ profile: 'VERIFIED', v2: 'VERIFIED' });
-    const res = await revokePOST(req('/x', json({ reason: 'fraud' })), params);
+    const res = await revokePOST(req('/x', json({ reason: 'Other' })), params);
     expect(res.status).toBe(200);
     expect(h.db.tables.profiles[0].tutor_verification_status).toBe('REVOKED');
   });
@@ -138,10 +138,10 @@ describe('role rules', () => {
 });
 
 describe('error mapping', () => {
-  it('reject without a reason is 400', async () => {
+  it('reject without a reason from the list is 400', async () => {
     const res = await rejectPOST(req('/x', json({ reason: '' })), params);
     expect(res.status).toBe(400);
-    expect((await res.json()).code).toBe('reason_required');
+    expect((await res.json()).code).toBe('reason_invalid');
   });
 
   it('approving a revoked teacher is 409 locked_revoked', async () => {
@@ -190,9 +190,9 @@ describe('what admins can and cannot see', () => {
   });
 
   it('the detail includes the decision history after a decision', async () => {
-    await rejectPOST(req('/x', json({ reason: 'Unreadable' })), params);
+    await rejectPOST(req('/x', json({ reason: 'ID could not be read' })), params);
     const body = await (await detailGET(req('/x'), params)).json();
-    expect(body.decisions[0]).toMatchObject({ action: 'REJECT', reason: 'Unreadable', actorRole: 'admin' });
+    expect(body.decisions[0]).toMatchObject({ action: 'REJECT', reason: 'ID could not be read', actorRole: 'admin' });
   });
 });
 
