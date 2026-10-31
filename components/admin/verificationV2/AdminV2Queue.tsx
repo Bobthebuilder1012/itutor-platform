@@ -90,6 +90,7 @@ export default function AdminV2Queue() {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [setup, setSetup] = useState<{ provider: string; primary: boolean; missing: string[]; message: string }[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -99,6 +100,7 @@ export default function AdminV2Queue() {
       const body = await res.json();
       if (!res.ok) throw new Error(body.error || 'Could not load the queue');
       setItems(body.items);
+      setSetup(body.setup ?? []);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -125,8 +127,8 @@ export default function AdminV2Queue() {
         <AdminBreadcrumb items={[{ label: 'Operations' }, { label: 'Verification v2' }]} />
         <h1 className="mb-1 text-2xl font-bold">Teacher verification (v2)</h1>
         <p className="mb-5 text-sm text-gray-600">
-          Identity is checked by Stripe. You see the pass or fail result and the teacher&apos;s credentials. ID
-          images are never stored by iTutor and never shown here.
+          Identity is checked by an outside provider. You see the pass or fail result and the teacher&apos;s
+          credentials. ID images are never stored by iTutor and never shown here.
         </p>
 
         <div className="mb-4 flex flex-wrap gap-2">
@@ -142,6 +144,17 @@ export default function AdminV2Queue() {
             </button>
           ))}
         </div>
+
+        {setup.map((p) => (
+          <div
+            key={p.provider}
+            role="alert"
+            className={`mb-4 rounded-lg border p-3 text-sm ${p.primary ? 'border-red-200 bg-red-50 text-red-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}
+          >
+            <strong>{p.primary ? 'Identity check is not available. ' : 'Backup provider incomplete. '}</strong>
+            {p.message}
+          </div>
+        ))}
 
         {error && <div role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div>}
 

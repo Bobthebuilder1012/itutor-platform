@@ -22,6 +22,7 @@ import { useParams } from 'next/navigation';
 import { ArrowLeft, Loader2, MessageSquare, ShieldAlert, ShieldCheck, Star } from 'lucide-react';
 import ParentShell from '@/components/parent/ParentShell';
 import BlurredBannerBackdrop from '@/components/tutor/BlurredBannerBackdrop';
+import VerificationBadges from '@/components/verification/VerificationBadges';
 
 type Tutor = {
   id: string;
@@ -148,6 +149,9 @@ function TutorProfileContent() {
                 ? `Teaches ${tutor.teaches.join(', ')} · ${tutor.via}`
                 : tutor.via}
             </p>
+
+            {/* The three verification labels. Nothing is shown unless the feature is on and the teacher is verified. */}
+            <VerificationBadges tutorId={tutor.id} className="mt-2" />
           </div>
 
           <Link

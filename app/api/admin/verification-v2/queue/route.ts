@@ -1,9 +1,11 @@
 // GET /api/admin/verification-v2/queue?status=IN_REVIEW|REVERIFICATION_REQUIRED|REJECTED|VERIFIED|REVOKED|IN_PROGRESS
 // The v2 applications, oldest submission first, with just enough to pick one.
-// No ID images exist in v2 (Stripe holds them), and none are returned.
+// No ID images exist in v2 (the identity provider holds them), and none are returned.
+// Also returns `setup`: which identity-provider settings are missing (names only).
 
 import { NextRequest, NextResponse } from 'next/server';
 import { guardAdminV2 } from '@/lib/verificationV2/adminGuard';
+import { identitySetupProblems } from '@/lib/identity/configStatus';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,6 +49,7 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     status,
+    setup: identitySetupProblems(),
     items: (rows ?? []).map((r: any) => ({
       tutorId: r.tutor_id,
       name: names[r.tutor_id]?.name ?? null,
