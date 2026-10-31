@@ -11,6 +11,7 @@ import { useAutosave } from '@/lib/hooks/useAutosave';
 import { supabase } from '@/lib/supabase/client';
 import SaveStatus from '@/components/SaveStatus';
 import TutorShell from '@/components/tutor/TutorShell';
+import VerificationStatusCard from '@/components/tutor/verificationV2/VerificationStatusCard';
 import PayoutSetupModal from '@/components/tutor/PayoutSetupModal';
 import {
   getTutorAvailabilityRules,
@@ -462,6 +463,9 @@ function GetListedContent() {
           </div>
         </div>
       </div>
+
+      {/* Teacher verification: its own card, not counted in the listing requirements above. */}
+      <VerificationStatusCard />
 
       {/* 1. Avatar */}
       <SectionShell done={completion.avatar} title="Profile picture" subtitle="A clear, friendly headshot helps students trust you.">

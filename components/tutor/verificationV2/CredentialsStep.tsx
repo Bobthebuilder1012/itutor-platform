@@ -10,7 +10,7 @@ import {
   type CredentialKind,
   type VerificationV2StateDto,
 } from '@/lib/verificationV2/constants';
-import { Card, ErrorBanner, PrimaryButton, SecondaryButton, readError } from './ui';
+import { Card, ErrorBanner, PrimaryButton, SecondaryButton, STEP_META, inputClass, readError } from './ui';
 
 interface Props {
   state: VerificationV2StateDto;
@@ -19,8 +19,7 @@ interface Props {
   onNext: () => void;
 }
 
-const INPUT =
-  'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-[#199356] focus:outline-none focus:ring-1 focus:ring-[#199356]';
+const INPUT = inputClass;
 
 function describe(c: CredentialDto): string {
   if (c.kind === 'DEGREE') {
@@ -128,19 +127,18 @@ export default function CredentialsStep({ state, onChange, onBack, onNext }: Pro
   }
 
   return (
-    <Card>
-      <h2 className="text-xl font-bold">Your qualifications</h2>
-      <p className="mb-5 mt-1 text-sm text-gray-600">
+    <Card title={STEP_META[3].title} subtitle={STEP_META[3].subtitle} state={state.credentials.length > 0 ? 'complete' : 'incomplete'}>
+      <p className="mb-5 text-sm text-muted-foreground">
         Add at least one. These are shown to students and parents once you are verified.
       </p>
 
       {state.credentials.length > 0 && (
-        <ul className="mb-6 divide-y divide-gray-200 rounded-lg border border-gray-200">
+        <ul className="mb-6 divide-y divide-border rounded-xl border border-border">
           {state.credentials.map((c) => (
             <li key={c.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
               <div>
                 <p className="font-medium">{describe(c)}</p>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-muted-foreground">
                   {c.hasProofFile ? `Proof file: ${c.proofFilename ?? 'uploaded'}` : 'Proof link added'}
                 </p>
               </div>
@@ -155,7 +153,7 @@ export default function CredentialsStep({ state, onChange, onBack, onNext }: Pro
       )}
 
       {state.editable && (
-        <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
+        <div className="space-y-3 rounded-xl border border-border bg-muted p-4">
           <div className="flex gap-2">
             {(['CSEC', 'CAPE', 'DEGREE'] as CredentialKind[]).map((k) => (
               <button
@@ -166,7 +164,7 @@ export default function CredentialsStep({ state, onChange, onBack, onNext }: Pro
                   setError(null);
                 }}
                 className={`rounded-full px-4 py-1.5 text-sm font-semibold ${
-                  kind === k ? 'bg-[#199356] text-white' : 'border border-gray-300 bg-white text-gray-700'
+                  kind === k ? 'bg-brand text-white' : 'border border-border bg-card text-ink'
                 }`}
               >
                 {k === 'DEGREE' ? 'Degree' : k}
@@ -193,7 +191,7 @@ export default function CredentialsStep({ state, onChange, onBack, onNext }: Pro
           )}
 
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">
               Proof file {kind === 'DEGREE' ? '(required)' : '(optional if you gave a link)'} · PDF, JPG or PNG, up to 10MB
             </label>
             <input
@@ -201,7 +199,7 @@ export default function CredentialsStep({ state, onChange, onBack, onNext }: Pro
               type="file"
               accept="application/pdf,image/jpeg,image/png"
               onChange={(e) => pickFile(e.target.files?.[0] ?? null)}
-              className="block w-full text-sm text-gray-700"
+              className="block w-full text-sm text-ink"
             />
           </div>
 

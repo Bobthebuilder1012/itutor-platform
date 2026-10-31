@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import type { VerificationV2StateDto } from '@/lib/verificationV2/constants';
 import { describeNotSupported, describeRetryReason } from '@/lib/identity/messages';
-import { Card, ErrorBanner, PrimaryButton, SecondaryButton, SupportNote, readError } from './ui';
+import { Card, ErrorBanner, Notice, PrimaryButton, SecondaryButton, STEP_META, SupportNote, inputClass, readError } from './ui';
 
 export interface IdentityApi {
   /** Starts, continues or falls back. Resolves with where to send the teacher, or an error. */
@@ -73,14 +73,14 @@ export default function IdentityStep({ state, onChange, onBack, onNext, api = de
 
   const countrySelect = (
     <div className="mb-4">
-      <label htmlFor="id-country" className="mb-1 block text-sm font-medium text-gray-700">
+      <label htmlFor="id-country" className="mb-1 block text-sm font-medium text-ink">
         Which country is your ID document from?
       </label>
       <select
         id="id-country"
         value={country}
         onChange={(e) => setCountry(e.target.value)}
-        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
+        className={inputClass}
       >
         <option value="">Choose a country</option>
         {identity.countries.map((c) => (
@@ -96,10 +96,26 @@ export default function IdentityStep({ state, onChange, onBack, onNext, api = de
   const status = identity.status;
   let body: React.ReactNode;
 
-  if (status === 'verified') {
+  if (status !== 'verified' && identity.available === false) {
     body = (
       <>
-        <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-900">
+        <Notice>
+          <p className="font-semibold">Identity check is not available yet.</p>
+          <p className="mt-1">
+            We are setting it up. You can add your qualifications and send your application now. We will ask you to do
+            the identity check as soon as it is ready.
+          </p>
+        </Notice>
+        <div className="mt-6 flex flex-wrap gap-3">
+          <SecondaryButton onClick={onBack}>Back</SecondaryButton>
+          <PrimaryButton onClick={onNext}>Continue to qualifications</PrimaryButton>
+        </div>
+      </>
+    );
+  } else if (status === 'verified') {
+    body = (
+      <>
+        <div className="rounded-xl border border-brand/30 bg-brand/5 p-4 text-sm text-ink">
           Your identity has been verified.
         </div>
         <div className="mt-6 flex gap-3">
@@ -111,8 +127,8 @@ export default function IdentityStep({ state, onChange, onBack, onNext, api = de
   } else if (status === 'processing') {
     body = (
       <>
-        <div className="flex items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
-          <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+        <div className="flex items-center gap-3 rounded-xl border border-border bg-muted p-4 text-sm text-ink">
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-brand border-t-transparent" />
           We are checking your documents. This usually takes a minute. You can leave this page open.
         </div>
         <div className="mt-6">
@@ -139,24 +155,24 @@ export default function IdentityStep({ state, onChange, onBack, onNext, api = de
     body = (
       <>
         {failed && (
-          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
             <p className="font-semibold">We could not verify your identity.</p>
             <p className="mt-1">{describeRetryReason(identity.reason)}</p>
           </div>
         )}
         {unsupported && (
-          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
             <p className="font-semibold">{describeNotSupported(identity.reason)}</p>
             {identity.furtherRoute && <p className="mt-1">We can try another way to check it.</p>}
           </div>
         )}
         {cancelled && (
-          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
             That check was cancelled. You can start a new one.
           </div>
         )}
         {unfinished && (
-          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
             You have not finished the check yet. Pick up where you left off.
           </div>
         )}
@@ -172,7 +188,7 @@ export default function IdentityStep({ state, onChange, onBack, onNext, api = de
         ) : (
           <>
             {!status && (
-              <ul className="mb-4 list-disc space-y-1 pl-5 text-sm text-gray-700">
+              <ul className="mb-4 list-disc space-y-1 pl-5 text-sm text-ink">
                 <li>Have your passport, driving licence or ID card ready.</li>
                 <li>You will take a photo of it and a quick selfie, on a secure page.</li>
                 <li>You will come back here automatically when you are done.</li>
@@ -190,7 +206,7 @@ export default function IdentityStep({ state, onChange, onBack, onNext, api = de
                     : 'Start identity check'}
             </PrimaryButton>
             {(failed || cancelled) && identity.canRetry && (
-              <p className="mt-3 text-xs text-gray-500">
+              <p className="mt-3 text-xs text-muted-foreground">
                 {attemptsLeft} attempt{attemptsLeft === 1 ? '' : 's'} left.
               </p>
             )}
@@ -204,9 +220,7 @@ export default function IdentityStep({ state, onChange, onBack, onNext, api = de
   }
 
   return (
-    <Card>
-      <h2 className="text-xl font-bold">Verify your identity</h2>
-      <p className="mb-5 mt-1 text-sm text-gray-600">A quick check of your government ID and a selfie.</p>
+    <Card title={STEP_META[2].title} subtitle={STEP_META[2].subtitle} state={status === 'verified' ? 'complete' : 'incomplete'}>
       {body}
     </Card>
   );

@@ -270,7 +270,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
         { label: 'Review', items: [
           { href: '/reviewer/dashboard', label: 'Dashboard', icon: icons.dashboard },
           { href: '/admin/verification/queue', label: 'Verification Queue', icon: icons.queue },
-          ...(v2Enabled ? [{ href: '/admin/verification-v2', label: 'Verification v2', icon: icons.shield }] : []),
+          ...(v2Enabled ? [{ href: '/admin/verification-v2', label: 'Teacher verification', icon: icons.shield }] : []),
           { href: '/admin/verified-tutors', label: 'Verified iTutors', icon: icons.shield },
           { href: '/admin/accounts', label: 'Account Management', icon: icons.users },
         ]},
@@ -280,7 +280,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           { href: '/admin/dashboard', label: 'Dashboard', icon: icons.dashboard },
           { href: '/admin/accounts', label: 'Accounts', icon: icons.users },
           { href: '/admin/verification/queue', label: 'Verification Queue', icon: icons.queue },
-          ...(v2Enabled ? [{ href: '/admin/verification-v2', label: 'Verification v2', icon: icons.shield }] : []),
+          ...(v2Enabled ? [{ href: '/admin/verification-v2', label: 'Teacher verification', icon: icons.shield }] : []),
           { href: '/admin/verified-tutors', label: 'Verified iTutors', icon: icons.shield },
           // The marketplace ranking controls (boost/pin) shipped without a nav
           // entry, so the page was only reachable by typing the URL.

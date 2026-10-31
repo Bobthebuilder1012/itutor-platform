@@ -19,7 +19,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { ArrowLeft, Loader2, MessageSquare, ShieldAlert, ShieldCheck, Star } from 'lucide-react';
+import { ArrowLeft, Loader2, MessageSquare, ShieldCheck, Star } from 'lucide-react';
 import ParentShell from '@/components/parent/ParentShell';
 import BlurredBannerBackdrop from '@/components/tutor/BlurredBannerBackdrop';
 import VerificationBadges from '@/components/verification/VerificationBadges';
@@ -163,36 +163,17 @@ function TutorProfileContent() {
           </Link>
         </div>
 
-        {/* Decision 31: the only trust attribute the product holds, stated either
-            way. An absent badge with no explanation reads as approval. */}
-        <div
-          className={`mt-4 flex items-start gap-2 rounded-xl border px-3.5 py-3 ${
-            tutor.verified
-              ? 'border-brand/30 bg-brand/5'
-              : 'border-amber-300 bg-amber-50'
-          }`}
-        >
-          {tutor.verified ? (
+        {/* Parents see the Verified statement on a verified teacher, and nothing at all about
+            verification on any other teacher (no "not yet verified", no "in progress"). */}
+        {tutor.verified && (
+          <div className="mt-4 flex items-start gap-2 rounded-xl border border-brand/30 bg-brand/5 px-3.5 py-3">
             <ShieldCheck className="mt-0.5 size-4 shrink-0 text-brand" />
-          ) : (
-            <ShieldAlert className="mt-0.5 size-4 shrink-0 text-amber-700" />
-          )}
-          <p className="text-xs leading-relaxed text-ink/80">
-            {tutor.verified ? (
-              <>
-                <strong>Verified iTutor.</strong> Their identity has been confirmed by our review
-                team. That is the only check iTutor performs — we do not run background checks or
-                safeguarding training.
-              </>
-            ) : (
-              <>
-                <strong>Not yet verified.</strong> This tutor&rsquo;s identity has not been confirmed
-                by our review team. They can still teach on iTutor, so this is worth knowing before
-                you approve a booking.
-              </>
-            )}
-          </p>
-        </div>
+            <p className="text-xs leading-relaxed text-ink/80">
+              <strong>Verified iTutor.</strong> Their identity has been confirmed by our review team. That is the only
+              check iTutor performs — we do not run background checks or safeguarding training.
+            </p>
+          </div>
+        )}
         </div>
       </section>
 

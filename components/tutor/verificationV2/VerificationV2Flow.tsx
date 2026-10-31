@@ -1,22 +1,37 @@
 'use client';
 
+// The teacher's verification page. It copies the "Complete your profile" checklist
+// (app/tutor/get-listed/page.tsx): back link, title, progress card, then one card per step
+// with a COMPLETE / INCOMPLETE pill. The open step shows its form; the others are a header
+// the teacher can open once the saved data allows it.
+
 import { useCallback, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import type { VerificationV2StateDto } from '@/lib/verificationV2/constants';
+import { SETUP_CODE, SETUP_MESSAGE, type VerificationV2StateDto } from '@/lib/verificationV2/constants';
 import { pollIntervalMs, stateSignature } from '@/lib/verificationV2/poll';
 import ConsentStep from './ConsentStep';
 import IdentityStep from './IdentityStep';
 import CredentialsStep from './CredentialsStep';
 import ExtrasStep from './ExtrasStep';
 import StatusView from './StatusView';
-import { Card, ErrorBanner } from './ui';
+import { Card, ErrorBanner, Notice, ProgressCard, STEP_META, type StepState } from './ui';
 
-const STEPS = ['Consent', 'Identity', 'Credentials', 'Extras'] as const;
+/** The three steps that must be done. Extras are optional and are not counted. */
+const REQUIRED = 3;
+
+function stepState(n: 1 | 2 | 3 | 4, s: VerificationV2StateDto): StepState {
+  if (n === 1) return s.consentAt ? 'complete' : 'incomplete';
+  if (n === 2) return s.identity.status === 'verified' ? 'complete' : 'incomplete';
+  if (n === 3) return s.credentials.length > 0 ? 'complete' : 'incomplete';
+  return s.extras.length > 0 ? 'complete' : 'optional';
+}
 
 export default function VerificationV2Flow() {
   const router = useRouter();
   const [state, setState] = useState<VerificationV2StateDto | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [setupMissing, setSetupMissing] = useState(false);
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   // True once the teacher has chosen to work on the form from the status view.
   const [working, setWorking] = useState(false);
@@ -35,8 +50,16 @@ export default function VerificationV2Flow() {
         setError('This page is not available.');
         return;
       }
+      if (res.status === 503) {
+        const body = await res.json().catch(() => ({}));
+        if (body?.code === SETUP_CODE) {
+          setSetupMissing(true);
+          return;
+        }
+      }
       if (!res.ok) throw new Error();
       const next = (await res.json()) as VerificationV2StateDto;
+      setSetupMissing(false);
       setState(next);
       setError(null);
       // Resume where the teacher left off, once. After that they navigate themselves.
@@ -52,7 +75,7 @@ export default function VerificationV2Flow() {
 
   useEffect(() => {
     void load();
-    // Back from Stripe: drop the marker so a refresh does not look like a return.
+    // Back from the provider: drop the marker so a refresh does not look like a return.
     if (typeof window !== 'undefined' && window.location.search.includes('identity=return')) {
       window.history.replaceState(null, '', window.location.pathname);
     }
@@ -89,26 +112,57 @@ export default function VerificationV2Flow() {
     };
   }, [status]);
 
+  const header = (
+    <header>
+      <Link href="/tutor/dashboard" className="text-xs text-muted-foreground hover:text-ink">
+        ← Back to dashboard
+      </Link>
+      <h1 className="mt-2 text-2xl lg:text-3xl font-bold text-ink">Get verified</h1>
+      <p className="text-sm text-muted-foreground mt-1">
+        Verify your identity and qualifications so students and parents can trust your profile. Your progress is saved.
+      </p>
+    </header>
+  );
+
+  if (setupMissing) {
+    return (
+      <div className="max-w-4xl space-y-6">
+        {header}
+        <Notice role="status">
+          <p className="font-semibold">{SETUP_MESSAGE}</p>
+          <p className="mt-1">Nothing is wrong with your account. Please check back soon.</p>
+        </Notice>
+      </div>
+    );
+  }
   if (error && !state) {
     return (
-      <div className="mx-auto max-w-2xl px-4 py-8">
+      <div className="max-w-4xl space-y-6">
+        {header}
         <ErrorBanner message={error} />
       </div>
     );
   }
   if (!state) {
-    return <div className="mx-auto max-w-2xl px-4 py-8 text-sm text-gray-500">Loading…</div>;
+    return (
+      <div className="max-w-4xl space-y-6">
+        {header}
+        <div className="min-h-[200px] flex items-center justify-center" role="status" aria-label="Loading">
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-brand" />
+        </div>
+      </div>
+    );
   }
 
   const showWizard = state.status === 'IN_PROGRESS' || (working && state.editable);
   // A step is reachable only up to the furthest one the saved data allows.
   const reach = state.step;
   const go = (n: number) => setStep(Math.min(Math.max(n, 1), reach, 4) as 1 | 2 | 3 | 4);
+  const completed = ([1, 2, 3] as const).filter((n) => stepState(n, state) === 'complete').length;
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
-      <h1 className="mb-1 text-2xl font-bold text-gray-900">Teacher verification</h1>
-      <p className="mb-6 text-sm text-gray-600">Your progress is saved. You can leave and come back.</p>
+    <div className="max-w-4xl space-y-6">
+      {header}
 
       {error && <ErrorBanner message={error} />}
 
@@ -122,54 +176,41 @@ export default function VerificationV2Flow() {
         />
       ) : (
         <>
-          <ol className="mb-6 grid grid-cols-4 gap-2" aria-label="Progress">
-            {STEPS.map((label, i) => {
-              const n = i + 1;
-              const done = n < step || n < reach;
-              const current = n === step;
-              const reachable = n <= reach;
-              return (
-                <li key={label}>
-                  <button
-                    type="button"
-                    disabled={!reachable}
-                    onClick={() => go(n)}
-                    className="block w-full text-left disabled:cursor-not-allowed"
-                    aria-current={current ? 'step' : undefined}
-                  >
-                    <div
-                      className={`h-1.5 rounded-full ${
-                        current ? 'bg-[#199356]' : done ? 'bg-[#199356]/50' : 'bg-gray-200'
-                      }`}
-                    />
-                    <p
-                      className={`mt-1.5 text-xs font-semibold ${
-                        current ? 'text-gray-900' : reachable ? 'text-gray-600' : 'text-gray-400'
-                      }`}
-                    >
-                      {n}. {label}
-                    </p>
-                  </button>
-                </li>
-              );
-            })}
-          </ol>
+          <ProgressCard
+            completed={completed}
+            total={REQUIRED}
+            hint={completed === REQUIRED ? 'Ready to send for review' : `${REQUIRED - completed} more to go`}
+          />
 
           {state.status === 'REJECTED' && state.decisionReason && (
-            <Card className="mb-4 border-red-200 bg-red-50 text-sm text-red-900">
+            <Notice>
               <p className="font-semibold">Previous decision</p>
               <p className="mt-1">{state.decisionReason}</p>
-            </Card>
+            </Notice>
           )}
 
-          {step === 1 && <ConsentStep state={state} onChange={load} onNext={() => setStep(2)} />}
-          {step === 2 && (
-            <IdentityStep state={state} onChange={load} onBack={() => setStep(1)} onNext={() => setStep(3)} />
-          )}
-          {step === 3 && (
-            <CredentialsStep state={state} onChange={load} onBack={() => setStep(2)} onNext={() => setStep(4)} />
-          )}
-          {step === 4 && <ExtrasStep state={state} onChange={load} onBack={() => setStep(3)} />}
+          {([1, 2, 3, 4] as const).map((n) => {
+            if (n === step) {
+              if (n === 1) return <ConsentStep key={n} state={state} onChange={load} onNext={() => setStep(2)} />;
+              if (n === 2) {
+                return <IdentityStep key={n} state={state} onChange={load} onBack={() => setStep(1)} onNext={() => setStep(3)} />;
+              }
+              if (n === 3) {
+                return <CredentialsStep key={n} state={state} onChange={load} onBack={() => setStep(2)} onNext={() => setStep(4)} />;
+              }
+              return <ExtrasStep key={n} state={state} onChange={load} onBack={() => setStep(3)} />;
+            }
+            return (
+              <Card
+                key={n}
+                title={STEP_META[n].title}
+                subtitle={STEP_META[n].subtitle}
+                state={stepState(n, state)}
+                collapsed
+                onOpen={n <= reach ? () => go(n) : undefined}
+              />
+            );
+          })}
         </>
       )}
     </div>

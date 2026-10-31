@@ -14,6 +14,7 @@ import { supabase } from '@/lib/supabase/client';
 import TutorShell from '@/components/tutor/TutorShell';
 import ReliabilityPanel from '@/components/reliability/ReliabilityPanel';
 import CampaignDashboardBanner from '@/components/classMatchWeek/CampaignDashboardBanner';
+import VerificationStatusCard from '@/components/tutor/verificationV2/VerificationStatusCard';
 
 type DashboardStats = {
   activeStudents: number;
@@ -244,6 +245,9 @@ function DashboardContent() {
           </Link>
         </div>
       </header>
+
+      {/* Shows only when teacher verification is on and set up; invisible otherwise. */}
+      <VerificationStatusCard />
 
       <section>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">

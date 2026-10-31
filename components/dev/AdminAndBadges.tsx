@@ -55,12 +55,10 @@ export default function AdminAndBadges({ provider, onAction }: { provider: Provi
         </Cell>
       </Section>
 
-      <Section id="badges" title="Badges and the click panel" note="Three separate labels. They appear only for teachers verified in the v2 flow.">
-        <Cell label="All three, full size"><BadgeRow summary={all} /></Cell>
-        <Cell label="All three, compact (class cards)"><BadgeRow compact summary={all} /></Cell>
-        <Cell label="No extras"><BadgeRow summary={{ ...all, hasExtras: false }} /></Cell>
-        <Cell label="Credentials reviewed only (ID not checked)"><BadgeRow summary={{ idChecked: false, credentialsReviewed: true, hasExtras: false }} /></Cell>
-        <Cell label="Nothing (an unverified teacher renders nothing)">
+      <Section id="badges" title="Badges and the click panel" note="One Verified badge, only on teachers verified in the v2 flow. Click it for what Verified means.">
+        <Cell label="Verified, full size"><BadgeRow summary={all} /></Cell>
+        <Cell label="Verified, compact (class cards)"><BadgeRow compact summary={all} /></Cell>
+        <Cell label="Nothing: an unverified or in-progress teacher shows no label at all">
           <div className="rounded border border-dashed border-gray-300 p-3 text-sm text-gray-500"><BadgeRow summary={{ idChecked: false, credentialsReviewed: false, hasExtras: false }} />(empty)</div>
         </Cell>
         <Cell label="As on a class card (dark)">

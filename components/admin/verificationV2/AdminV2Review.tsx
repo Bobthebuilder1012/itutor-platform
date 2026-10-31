@@ -61,8 +61,8 @@ export function ReviewView({
 
   return (
     <div className="space-y-5">
-      <section className="rounded-2xl border border-gray-200 bg-white p-5">
-        <h1 className="text-2xl font-bold">{detail.tutor.name ?? 'Unnamed teacher'}</h1>
+      <section className="bg-white border-2 border-gray-200 rounded-lg p-6">
+        <h1 className="text-3xl font-bold text-gray-900">{detail.tutor.name ?? 'Unnamed teacher'}</h1>
         <p className="text-sm text-gray-600">{detail.tutor.email}</p>
         <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
           <div><dt className="text-gray-500">Application</dt><dd className="font-semibold">{status}</dd></div>
@@ -72,14 +72,14 @@ export function ReviewView({
         </dl>
       </section>
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-5">
-        <h2 className="text-lg font-bold">Identity check</h2>
+      <section className="bg-white border-2 border-gray-200 rounded-lg p-6">
+        <h2 className="text-xl font-bold text-gray-900 mb-4">Identity check</h2>
         <p className="mt-1 text-sm">
           Result:{' '}
           <span className={id.status === 'verified' ? 'font-semibold text-green-700' : 'font-semibold text-red-700'}>
             {id.status ?? 'not started'}
           </span>
-          {id.errorCode && <> ({id.errorCode})</>} · {id.attempts} attempt(s)
+          {id.errorCode && <> ({id.errorCode})</>}{id.attempts > 0 && <> · {id.attempts} attempt(s)</>}
           {id.provider && (
             <> · checked by {id.provider}{id.country ? ` (document from ${id.country})` : ''}</>
           )}
@@ -91,8 +91,8 @@ export function ReviewView({
         </p>
       </section>
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-5">
-        <h2 className="text-lg font-bold">Credentials</h2>
+      <section className="bg-white border-2 border-gray-200 rounded-lg p-6">
+        <h2 className="text-xl font-bold text-gray-900 mb-4">Credentials</h2>
         {detail.credentials.length === 0 && <p className="mt-2 text-sm text-gray-500">None.</p>}
         <ul className="mt-3 space-y-4">
           {detail.credentials.map((c) => (
@@ -103,8 +103,8 @@ export function ReviewView({
                   : `${c.kind} ${c.subject} · Grade ${c.grade} · ${c.examYear}`}
               </p>
               <p className="mt-1">
-                {c.proofLink && <a className="mr-3 font-semibold text-[#199356] underline" href={c.proofLink} target="_blank" rel="noopener noreferrer">Open proof file{c.proofFilename ? ` (${c.proofFilename})` : ''}</a>}
-                {c.proofUrl && <a className="font-semibold text-[#199356] underline" href={c.proofUrl} target="_blank" rel="noopener noreferrer nofollow">Teacher&apos;s proof link</a>}
+                {c.proofLink && <a className="mr-3 font-semibold text-itutor-green underline" href={c.proofLink} target="_blank" rel="noopener noreferrer">Open proof file{c.proofFilename ? ` (${c.proofFilename})` : ''}</a>}
+                {c.proofUrl && <a className="font-semibold text-itutor-green underline" href={c.proofUrl} target="_blank" rel="noopener noreferrer nofollow">Teacher&apos;s proof link</a>}
                 {c.proofDeleted && <span className="text-gray-500">Proof file deleted per retention policy.</span>}
               </p>
               {c.evidence.length > 0 && (
@@ -125,8 +125,8 @@ export function ReviewView({
         </ul>
       </section>
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-5">
-        <h2 className="text-lg font-bold">Teacher-provided extras</h2>
+      <section className="bg-white border-2 border-gray-200 rounded-lg p-6">
+        <h2 className="text-xl font-bold text-gray-900 mb-4">Teacher-provided extras</h2>
         <p className="text-xs text-gray-500">Not verified by iTutor. Shown publicly with that label.</p>
         {detail.extras.length === 0 && <p className="mt-2 text-sm text-gray-500">None.</p>}
         <ul className="mt-3 space-y-3">
@@ -134,15 +134,15 @@ export function ReviewView({
             <li key={x.id} className="text-sm">
               <p className="font-semibold">{x.title}</p>
               <p className="text-gray-700">{x.description}</p>
-              {x.linkUrl && <a className="break-all text-xs text-[#199356] underline" href={x.linkUrl} target="_blank" rel="noopener noreferrer nofollow">{x.linkUrl}</a>}
+              {x.linkUrl && <a className="break-all text-xs text-itutor-green underline" href={x.linkUrl} target="_blank" rel="noopener noreferrer nofollow">{x.linkUrl}</a>}
             </li>
           ))}
         </ul>
       </section>
 
       {(canDecide || canRevoke) && (
-        <section className="rounded-2xl border border-gray-200 bg-white p-5">
-          <h2 className="text-lg font-bold">Decision</h2>
+        <section className="bg-white border-2 border-gray-200 rounded-lg p-6">
+          <h2 className="text-xl font-bold text-gray-900 mb-4">Decision</h2>
           <textarea
             value={reason}
             onChange={(e) => onReason(e.target.value)}
@@ -153,7 +153,7 @@ export function ReviewView({
           <div className="mt-3 flex flex-wrap gap-3">
             {canDecide && (
               <>
-                <button onClick={() => onAct('approve')} disabled={busy} className="rounded-lg bg-[#199356] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50">Approve</button>
+                <button onClick={() => onAct('approve')} disabled={busy} className="rounded-lg bg-itutor-green px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50">Approve</button>
                 <button onClick={() => onAct('reject')} disabled={busy} className="rounded-lg border border-red-300 bg-white px-5 py-2.5 text-sm font-semibold text-red-700 disabled:opacity-50">Reject</button>
               </>
             )}
@@ -164,8 +164,8 @@ export function ReviewView({
         </section>
       )}
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-5">
-        <h2 className="text-lg font-bold">Decision history</h2>
+      <section className="bg-white border-2 border-gray-200 rounded-lg p-6">
+        <h2 className="text-xl font-bold text-gray-900 mb-4">Decision history</h2>
         {detail.decisions.length === 0 && <p className="mt-2 text-sm text-gray-500">No decisions yet.</p>}
         <ul className="mt-3 space-y-2 text-sm">
           {detail.decisions.map((d) => (
@@ -249,7 +249,7 @@ export default function AdminV2Review({ tutorId }: { tutorId: string }) {
     <DashboardLayout role={isAdmin ? 'admin' : 'reviewer'} userName={displayName}>
       <div className="mx-auto max-w-3xl px-4 py-6 text-gray-900">
         <AdminBreadcrumb
-          items={[{ label: 'Operations' }, { label: 'Verification v2', href: '/admin/verification-v2' }, { label: 'Review' }]}
+          items={[{ label: 'Operations' }, { label: 'Teacher verification', href: '/admin/verification-v2' }, { label: 'Review' }]}
         />
         {!detail && !error && <p className="text-sm text-gray-500">Loading…</p>}
         {error && <div role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div>}

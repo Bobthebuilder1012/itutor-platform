@@ -43,9 +43,9 @@ for (const [label, width, height] of [['phone-375', 375, 812], ['desktop-1280', 
   const cells = await page.locator('[data-state]').count();
   ok(`${label}: shows many states (${cells})`, cells >= 50, cells);
 
-  // the three badge labels exist, separately, and the extras label is exact
+  // one Verified badge exists, and the panel explains what it covers
   const bodyText = await page.locator('body').innerText();
-  ok(`${label}: the three badge labels appear`, /ID checked/.test(bodyText) && /Credentials reviewed/.test(bodyText) && /Teacher-provided extras \(not verified by iTutor\)/.test(bodyText));
+  ok(`${label}: the Verified badge appears, and no in-progress or unverified label does`, /Verified/.test(bodyText) && /ID checked/.test(bodyText));
   ok(`${label}: no provider name leaks into teacher screens`, !/(requires_input|under_supported_age|stripe says|didit says|veriff says)/i.test(await page.locator('#identity').innerText()));
   ok(`${label}: no manual identity route is offered anywhere`, !/manual verification|manual review of your id/i.test(bodyText));
 

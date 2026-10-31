@@ -1,19 +1,22 @@
 'use client';
 
 import { useState } from 'react';
-import { BadgeCheck, ShieldCheck, Sparkles } from 'lucide-react';
+import { ShieldCheck } from 'lucide-react';
 import { useVerificationSummary } from '@/lib/verificationV2/clientHooks';
 import type { PublicSummary } from '@/lib/verificationV2/publicView';
 import VerificationPanel from './VerificationPanel';
 
-/** The three labels. Separate facts, never merged into one "verified" badge. */
+/** What the click panel lists. The badge itself just says "Verified". */
 export const LABEL_ID = 'ID checked';
 export const LABEL_CREDENTIALS = 'Credentials reviewed';
 export const LABEL_EXTRAS = 'Teacher-provided extras (not verified by iTutor)';
 
 /**
- * The labels themselves, with no data fetching. Used by VerificationBadges below
- * and by the dev states gallery. Renders nothing when no label applies.
+ * The badge itself, with no data fetching. Used by VerificationBadges below and by the
+ * dev states gallery. Students, parents and visitors see ONE thing: "Verified", on a
+ * teacher who is verified. There is no label for in progress, pending or unverified
+ * anywhere. What "Verified" covers (identity checked, credentials reviewed, the
+ * teacher's own extras) is in the panel that opens when the badge is clicked.
  */
 export function BadgeRow({
   summary,
@@ -26,45 +29,23 @@ export function BadgeRow({
   className?: string;
   onOpen?: (e: React.SyntheticEvent) => void;
 }) {
+  // A summary only exists for a verified teacher; one with nothing to say renders nothing.
   if (!summary.idChecked && !summary.credentialsReviewed && !summary.hasExtras) return null;
 
   const size = compact ? 'text-[10px] px-1.5 py-0.5 gap-1' : 'text-xs px-2.5 py-1 gap-1.5';
   const icon = compact ? 'size-3' : 'size-3.5';
 
-  const pill = (key: string, tone: string, children: React.ReactNode) => (
-    <button
-      key={key}
-      type="button"
-      onClick={onOpen}
-      className={`inline-flex items-center rounded-full border font-semibold leading-tight transition hover:brightness-95 ${size} ${tone}`}
-    >
-      {children}
-    </button>
-  );
-
   return (
     <div className={`flex flex-wrap items-center gap-1.5 ${className}`} data-testid="verification-badges">
-      {summary.idChecked &&
-        pill('id', 'border-emerald-200 bg-emerald-50 text-emerald-800', (
-          <>
-            <ShieldCheck className={icon} aria-hidden />
-            {LABEL_ID}
-          </>
-        ))}
-      {summary.credentialsReviewed &&
-        pill('cred', 'border-emerald-200 bg-emerald-50 text-emerald-800', (
-          <>
-            <BadgeCheck className={icon} aria-hidden />
-            {LABEL_CREDENTIALS}
-          </>
-        ))}
-      {summary.hasExtras &&
-        pill('extras', 'border-gray-200 bg-gray-50 text-gray-700', (
-          <>
-            <Sparkles className={icon} aria-hidden />
-            {LABEL_EXTRAS}
-          </>
-        ))}
+      <button
+        type="button"
+        onClick={onOpen}
+        aria-label="Verified. See what this means"
+        className={`inline-flex items-center rounded-full border border-brand/30 bg-brand/10 font-semibold leading-tight text-brand-deep transition hover:bg-brand/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand ${size}`}
+      >
+        <ShieldCheck className={icon} aria-hidden />
+        Verified
+      </button>
     </div>
   );
 }
