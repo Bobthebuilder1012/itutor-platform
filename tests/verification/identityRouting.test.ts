@@ -271,9 +271,11 @@ describe('startIdentityCheck', () => {
     expect(await start(db)).toMatchObject({ ok: true, provider: 'didit' });
   });
 
-  it('nothing configured is no_route', async () => {
+  it('nothing configured says so plainly (503 not_configured), with the contact-support route', async () => {
     h.configured = [];
-    expect(await start(seed())).toMatchObject({ ok: false, code: 'no_route' });
+    const r = await start(seed());
+    expect(r).toMatchObject({ ok: false, code: 'not_configured', httpStatus: 503, extra: { support: true } });
+    expect((r as any).error).toMatch(/temporarily unavailable/i);
   });
 
   it('reuses an unfinished session instead of creating another', async () => {

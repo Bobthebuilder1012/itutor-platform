@@ -78,6 +78,17 @@ export async function startIdentityCheck(opts: {
   });
 
   if (step.action === 'done') return { ok: true, kind: 'verified' };
+  // No identity provider is configured at all. Say so plainly to the teacher, and leave a
+  // log line (names only) and the admin banner (lib/identity/configStatus.ts) for the admin.
+  if (step.action === 'none' && step.reason === 'no_route' && routeForCountry(country).length === 0) {
+    console.error('[identity/start] no identity provider is configured; see the setup banner on /admin/verification-v2');
+    return fail(
+      503,
+      'not_configured',
+      'Identity checks are temporarily unavailable. We have been told and are fixing it. Please try again later, or contact support.',
+      { support: true }
+    );
+  }
   if (step.action === 'none') {
     return fail(
       409,

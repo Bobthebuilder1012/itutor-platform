@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { guardAdminV2 } from '@/lib/verificationV2/adminGuard';
+import { schemaNotReady } from '@/lib/verificationV2/schemaReady';
 import { identitySetupProblems } from '@/lib/identity/configStatus';
 
 export const dynamic = 'force-dynamic';
@@ -26,6 +27,8 @@ export async function GET(request: NextRequest) {
     .eq('status', status)
     .order('submitted_at', { ascending: true })
     .limit(100);
+  const setup = schemaNotReady(error);
+  if (setup) return setup;
   if (error) {
     console.error('[admin/verification-v2/queue]', error.message);
     return NextResponse.json({ error: 'Could not load the queue' }, { status: 500 });

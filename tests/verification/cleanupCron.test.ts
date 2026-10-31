@@ -37,8 +37,9 @@ describe('verification cleanup cron: who may call it', () => {
 });
 
 describe('verification cleanup cron: the feature flag', () => {
-  it('does nothing while VERIFICATION_V2_ENABLED is off or unset: no sweep, no database client', async () => {
-    for (const v of [undefined, 'false', '0', '']) {
+  it('does nothing while the flag is off (explicitly false, or unset in production): no sweep, no database client', async () => {
+    vi.stubEnv('VERCEL_ENV', 'production'); // unset means OFF in production
+    for (const v of [undefined, 'false', 'FALSE', '0', '']) {
       if (v === undefined) delete process.env.VERIFICATION_V2_ENABLED;
       else process.env.VERIFICATION_V2_ENABLED = v;
       for (const url of ['/api/cron/verification-cleanup', '/api/cron/verification-cleanup?apply=1']) {
@@ -49,6 +50,7 @@ describe('verification cleanup cron: the feature flag', () => {
     }
     expect(h.run).not.toHaveBeenCalled();
     expect(h.service).not.toHaveBeenCalled();
+    vi.unstubAllEnvs();
   });
 
   it('the flag does not unlock a request that has no secret', async () => {

@@ -2,6 +2,7 @@
 // DELETE /api/tutor/verification-v2/extras?id=…   remove one
 // Step 4. The limit of 3 is checked here AND by a database trigger.
 
+import { schemaNotReady } from '@/lib/verificationV2/schemaReady';
 import { NextRequest, NextResponse } from 'next/server';
 import { MAX_EXTRAS } from '@/lib/verificationV2/constants';
 import { validateExtra } from '@/lib/verificationV2/validation';
@@ -65,6 +66,8 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json({ id: data.id }, { status: 201 });
   } catch (err) {
+    const setup = schemaNotReady(err);
+    if (setup) return setup;
     console.error('[verification-v2/extras] failed:', (err as Error).message);
     return NextResponse.json({ error: 'Could not save the extra' }, { status: 500 });
   }
@@ -86,6 +89,8 @@ export async function DELETE(request: NextRequest) {
     if (error) throw error;
     return NextResponse.json({ ok: true });
   } catch (err) {
+    const setup = schemaNotReady(err);
+    if (setup) return setup;
     console.error('[verification-v2/extras] delete failed:', (err as Error).message);
     return NextResponse.json({ error: 'Could not remove the extra' }, { status: 500 });
   }

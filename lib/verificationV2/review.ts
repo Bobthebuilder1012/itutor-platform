@@ -135,7 +135,7 @@ export async function approveV2(ctx: ReviewCtx, tutorId: string): Promise<Review
 
   // The two things a reviewer is signing off must really be there.
   if (row.identity_status !== 'verified') {
-    return fail('identity_not_verified', 'The Stripe identity check has not passed.');
+    return fail('identity_not_verified', 'The identity check has not passed. The teacher has to complete it before this can be approved.');
   }
   const { count, error: cErr } = await db
     .from('tutor_credentials_v2')

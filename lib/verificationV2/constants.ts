@@ -29,6 +29,10 @@ export type CredentialKind = 'CSEC' | 'CAPE' | 'DEGREE';
 /** Bump when the consent wording changes; stored with the consent timestamp. */
 export const CONSENT_VERSION = '2026-10-v1';
 
+/** Client-safe: the screens and the routes both use these. */
+export const SETUP_MESSAGE = 'Verification setup is not finished on this environment.';
+export const SETUP_CODE = 'setup_not_finished';
+
 export const MAX_IDENTITY_ATTEMPTS = 3;
 export const MAX_EXTRAS = 3;
 export const MAX_CREDENTIALS = 20;
@@ -82,9 +86,14 @@ export interface VerificationV2StateDto {
     furtherRoute: boolean;
     /** What the teacher may pick as their document country. */
     countries: { code: string; label: string }[];
+    /** False when no identity provider is configured on this environment. The check cannot be
+     *  started, and the other steps are not blocked by it. */
+    available: boolean;
   };
   submittedAt: string | null;
   decisionReason: string | null;
+  /** A short reference the teacher can quote to support. Not an id; null before an application exists. */
+  reference: string | null;
   /** Locked once in review, verified or revoked. */
   editable: boolean;
   /** Furthest step the teacher may be on, computed from saved data. 1..4 */

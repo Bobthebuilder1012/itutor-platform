@@ -15,9 +15,14 @@ describe('identity setup problems (admin screen)', () => {
     expect(p[0].message).toContain('DIDIT_WEBHOOK_SECRET');
   });
 
-  it('nothing set at all: the first provider lists all three names, the unused backups stay quiet', () => {
+  it('nothing set at all, outside production: the workflow id falls back to the sandbox one, so two names are missing', () => {
     const p = identitySetupProblems({});
     expect(p).toHaveLength(1);
+    expect(p[0].missing).toEqual(['DIDIT_API_KEY', 'DIDIT_WEBHOOK_SECRET']);
+  });
+
+  it('nothing set at all, in production: all three are missing (no fallback)', () => {
+    const p = identitySetupProblems({ VERCEL_ENV: 'production' });
     expect(p[0].missing).toEqual(['DIDIT_API_KEY', 'DIDIT_WORKFLOW_ID', 'DIDIT_WEBHOOK_SECRET']);
   });
 

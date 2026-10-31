@@ -1,18 +1,26 @@
+import { isProductionRuntime } from '@/lib/email/allowlist';
+
 /**
- * Teacher verification v2 (Stripe Identity + credentials + extras).
+ * Teacher verification v2 (identity check + credentials + extras).
  *
- * Set `VERIFICATION_V2_ENABLED=true` to switch it on. Anything else, including
- * unset, is OFF: /tutor/verification-v2 returns 404, every
- * /api/tutor/verification-v2 route returns 404, and the Stripe webhook records
- * the two identity events as skipped instead of touching the database.
+ *   VERIFICATION_V2_ENABLED=true     ON everywhere, production included.
+ *   VERIFICATION_V2_ENABLED=false    OFF everywhere.
+ *   unset or anything else           ON outside production, OFF in production.
  *
- * Server-side only, deliberately not NEXT_PUBLIC_. The page is a Server
- * Component that checks this before rendering, so no browser bundle needs the
- * value and a stale bundle cannot bypass it.
+ * "Production" is VERCEL_ENV === 'production' on Vercel, NODE_ENV === 'production' off
+ * Vercel (lib/email/allowlist.ts). So staging, previews and local development show the
+ * feature without any setting, and production stays off until someone sets it to "true".
  *
- * It does not touch the old flows (app/tutor/verification, app/verification),
- * which keep working whatever this is set to.
+ * Server side only, deliberately not NEXT_PUBLIC_. The page is a Server Component that
+ * checks this before rendering, so no browser bundle needs the value and a stale bundle
+ * cannot bypass it. Read per request: changing it needs no rebuild.
+ *
+ * It does not touch the old flows (app/tutor/verification, app/verification), which keep
+ * working whatever this is set to.
  */
-export function isVerificationV2Enabled(): boolean {
-  return (process.env.VERIFICATION_V2_ENABLED ?? 'false').toLowerCase() === 'true';
+export function isVerificationV2Enabled(env: Record<string, string | undefined> = process.env): boolean {
+  const raw = (env.VERIFICATION_V2_ENABLED ?? '').trim().toLowerCase();
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  return !isProductionRuntime(env);
 }

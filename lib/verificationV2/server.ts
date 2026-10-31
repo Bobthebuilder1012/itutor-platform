@@ -125,6 +125,11 @@ export function hasConsent(row: VerificationRow | null): boolean {
   return !!row?.consent_at;
 }
 
+/** True when this teacher's identity check can be started at all (a provider is configured). */
+export function identityAvailable(row: VerificationRow | null): boolean {
+  return routeForCountry(row?.identity_country).length > 0;
+}
+
 /** Steps 1 and 2 done. */
 export function hasIdentity(row: VerificationRow | null): boolean {
   return hasConsent(row) && row?.identity_status === 'verified';
@@ -247,10 +252,15 @@ export function buildState(
   const canRetry = nextStep.action === 'retry_same';
   const furtherRoute = nextStep.action === 'next';
 
+  // No provider configured: the identity step cannot be done here yet, and it must not hold
+  // up the qualifications or the submission. An admin cannot approve until it is done.
+  const available = routeForCountry(row?.identity_country).length > 0;
+  const identityDone = hasIdentity(row) || (hasConsent(row) && !available);
+
   let step: 1 | 2 | 3 | 4 = 1;
   if (hasConsent(row)) step = 2;
-  if (hasIdentity(row)) step = 3;
-  if (hasIdentity(row) && credentials.length > 0) step = 4;
+  if (identityDone) step = 3;
+  if (identityDone && credentials.length > 0) step = 4;
 
   // A teacher whose PROFILE is revoked is revoked here too, whatever the v2
   // row says (or whether it exists), and cannot edit.
@@ -276,9 +286,11 @@ export function buildState(
       canRetry,
       furtherRoute,
       countries: identityRouting.countries,
+      available,
     },
     submittedAt: row?.submitted_at ?? null,
     decisionReason: row?.status === 'REJECTED' ? row.decision_reason : null,
+    reference: row ? `VR-${row.tutor_id.replace(/-/g, '').slice(0, 8).toUpperCase()}` : null,
     editable: !revokedProfile && isEditable(row),
     step,
     credentials,

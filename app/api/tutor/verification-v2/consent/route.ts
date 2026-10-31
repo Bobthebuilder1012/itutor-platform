@@ -1,6 +1,7 @@
 // POST /api/tutor/verification-v2/consent   { accepted: true }
 // Step 1. Stores the consent timestamp. Creates the teacher's v2 row.
 
+import { schemaNotReady } from '@/lib/verificationV2/schemaReady';
 import { NextRequest, NextResponse } from 'next/server';
 import { CONSENT_VERSION } from '@/lib/verificationV2/constants';
 import { blocked, guardV2, isEditable, loadRow } from '@/lib/verificationV2/server';
@@ -37,6 +38,8 @@ export async function POST(request: NextRequest) {
     if (error) throw error;
     return NextResponse.json({ ok: true, consentAt });
   } catch (err) {
+    const setup = schemaNotReady(err);
+    if (setup) return setup;
     console.error('[verification-v2/consent] failed:', (err as Error).message);
     return NextResponse.json({ error: 'Could not save your consent' }, { status: 500 });
   }

@@ -11,6 +11,7 @@
 //   credentialsReviewed  a reviewer approved the credentials
 //   hasExtras            the teacher added extras (NOT verified by iTutor)
 
+import { isMissingSchemaError } from './schemaReady';
 import type { Db } from '@/lib/verification/setStatus';
 
 export interface PublicSummary {
@@ -55,6 +56,8 @@ async function verifiedRows(db: Db, ids: string[]) {
       .eq('status', 'VERIFIED'),
     db.from('profiles').select('id').in('id', ids).eq('tutor_verification_status', 'VERIFIED'),
   ]);
+  // Migrations not run on this environment: nobody is verified, and nothing breaks.
+  if (isMissingSchemaError(v2.error)) return [];
   if (v2.error || profiles.error) throw new Error('verification lookup failed');
   const profileVerified = new Set((profiles.data ?? []).map((p: any) => p.id));
   return (v2.data ?? []).filter((r: any) => profileVerified.has(r.tutor_id));

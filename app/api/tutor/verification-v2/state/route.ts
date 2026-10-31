@@ -3,6 +3,7 @@
 // Stripe session result on the way, so returning from Stripe works without
 // waiting for the webhook.
 
+import { schemaNotReady } from '@/lib/verificationV2/schemaReady';
 import { NextResponse } from 'next/server';
 import { guardV2, loadState } from '@/lib/verificationV2/server';
 
@@ -17,6 +18,8 @@ export async function GET() {
     const state = await loadState(g.db, g.tutorId, g.profileStatus);
     return NextResponse.json(state, { headers: { 'Cache-Control': 'no-store' } });
   } catch (err) {
+    const setup = schemaNotReady(err);
+    if (setup) return setup;
     console.error('[verification-v2/state] failed:', (err as Error).message);
     return NextResponse.json({ error: 'Could not load your verification' }, { status: 500 });
   }

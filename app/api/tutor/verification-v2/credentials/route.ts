@@ -2,6 +2,7 @@
 // DELETE /api/tutor/verification-v2/credentials?id=…   remove one
 // Step 3. Needs consent and a verified identity first.
 
+import { schemaNotReady } from '@/lib/verificationV2/schemaReady';
 import { NextRequest, NextResponse } from 'next/server';
 import { MAX_CREDENTIALS, MAX_PROOF_BYTES, PROOF_BUCKET } from '@/lib/verificationV2/constants';
 import { isOwnProofPath, validateCredential } from '@/lib/verificationV2/validation';
@@ -94,6 +95,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ id: data.id }, { status: 201 });
   } catch (err) {
+    const setup = schemaNotReady(err);
+    if (setup) return setup;
     console.error('[verification-v2/credentials] failed:', (err as Error).message);
     return NextResponse.json({ error: 'Could not save the credential' }, { status: 500 });
   }
@@ -127,6 +130,8 @@ export async function DELETE(request: NextRequest) {
     }
     return NextResponse.json({ ok: true });
   } catch (err) {
+    const setup = schemaNotReady(err);
+    if (setup) return setup;
     console.error('[verification-v2/credentials] delete failed:', (err as Error).message);
     return NextResponse.json({ error: 'Could not remove the credential' }, { status: 500 });
   }

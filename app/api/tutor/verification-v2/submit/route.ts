@@ -4,6 +4,7 @@
 // Needs consent, a verified identity and at least one credential, all checked
 // here from saved data, not from anything the browser claims.
 
+import { schemaNotReady } from '@/lib/verificationV2/schemaReady';
 import { NextResponse } from 'next/server';
 import { setV2Status, statusErrorResponse } from '@/lib/verification/setStatus';
 import { notifyTeacher } from '@/lib/verificationV2/notify';
@@ -12,6 +13,7 @@ import {
   guardV2,
   hasConsent,
   hasIdentity,
+  identityAvailable,
   isEditable,
   loadCredentials,
   loadRow,
@@ -28,7 +30,11 @@ export async function POST() {
     const row = await loadRow(db, tutorId);
     if (!isEditable(row)) return blocked('Your submission is locked while it is reviewed', 409, { code: 'locked' });
     if (!hasConsent(row)) return blocked('Please accept the notice first', 409, { code: 'consent_required' });
-    if (!hasIdentity(row)) return blocked('Complete the identity check first', 409, { code: 'identity_required' });
+    // The identity check is required, unless this environment has no provider to run it:
+    // then the teacher can still send everything else, and an admin cannot approve until it is done.
+    if (!hasIdentity(row) && identityAvailable(row)) {
+      return blocked('Complete the identity check first', 409, { code: 'identity_required' });
+    }
     if ((await loadCredentials(db, tutorId)).length === 0) {
       return blocked('Add at least one credential first', 409, { code: 'credentials_required' });
     }
@@ -43,6 +49,8 @@ export async function POST() {
 
     return NextResponse.json({ ok: true, status: 'IN_REVIEW' });
   } catch (err) {
+    const setup = schemaNotReady(err);
+    if (setup) return setup;
     console.error('[verification-v2/submit] failed:', (err as Error).message);
     return NextResponse.json({ error: 'Could not submit' }, { status: 500 });
   }

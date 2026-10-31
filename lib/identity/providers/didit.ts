@@ -4,7 +4,8 @@
 //
 // Env (names only):
 //   DIDIT_API_KEY              application API key, sent as the x-api-key header
-//   DIDIT_WORKFLOW_ID          the workflow (UUID) sessions are created from
+//   DIDIT_WORKFLOW_ID          the workflow (UUID) sessions are created from. Outside production
+//                              it falls back to the sandbox workflow (lib/identity/diditConfig.ts)
 //   DIDIT_WEBHOOK_SECRET       signing secret of the webhook destination
 //   DIDIT_BASE_URL             optional, default https://verification.didit.me
 //   DIDIT_EXPECT_ENVIRONMENT   optional 'sandbox' | 'live': webhooks whose
@@ -13,7 +14,9 @@
 //
 // What is implemented from the docs, and what is deliberately NOT:
 //   createSession   POST /v3/session/            implemented
-//   getOutcome      GET  /v3/session/{id}/decision/  implemented
+//   getOutcome      GET  /v3/session/{id}/decision/  implemented (4.5 s limit: Didit gives a
+//                   webhook 5 s to answer, and the webhook handler calls this)
+//   ping            GET  /v3/sessions/?limit=1       read-only connection test (admin button)
 //   redact          DELETE /v3/session/{id}/delete/  implemented
 //   verifyWebhook   X-Signature-V2 (recommended), then X-Signature (raw bytes), in
 //                   Didit's own order, both HMAC-SHA256 hex with the destination
@@ -33,9 +36,9 @@
 // cover the whole body: the decision endpoint is authoritative and webhooks can
 // arrive out of order.
 //
-// TODO(didit, unclear): idempotency on session creation is not documented, so
-//   a repeated create makes a second session. lib/identity/start.ts deletes the
-//   orphan when it loses a race.
+// Session creation IS idempotent per the current docs: an unfinished session for the same
+//   workflow_id and vendor_data (our teacher id) is returned instead of a new one. The orphan
+//   clean-up in lib/identity/start.ts stays as a belt-and-braces measure.
 // TODO(didit, unclear): the `expected_details.id_country` format (alpha-2 or
 //   alpha-3) is not stated, so the teacher's document country is NOT sent.
 // TODO(didit, unclear): no documented code for an unsupported country/document
@@ -50,6 +53,7 @@
 import { createHmac, timingSafeEqual } from 'crypto';
 import { identityRouting } from '@/config/identityRouting';
 import { mapDiditDecision } from '../mapping';
+import { diditWorkflowId } from '../diditConfig';
 import {
   WebhookSignatureError,
   type CreatedSession,
@@ -64,12 +68,14 @@ import {
 
 const TIMESTAMP_TOLERANCE_SECONDS = 300;
 const REQUEST_TIMEOUT_MS = 10_000;
+/** The decision is fetched inside a webhook, and Didit abandons a webhook after 5 s. */
+const DECISION_TIMEOUT_MS = 4_500;
 
 const baseUrl = () => (process.env.DIDIT_BASE_URL || 'https://verification.didit.me').replace(/\/+$/, '');
 
-async function diditFetch(path: string, init: { method: string; body?: unknown }): Promise<Response> {
+async function diditFetch(path: string, init: { method: string; body?: unknown; timeoutMs?: number }): Promise<Response> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), init.timeoutMs ?? REQUEST_TIMEOUT_MS);
   try {
     return await fetch(`${baseUrl()}${path}`, {
       method: init.method,
@@ -171,17 +177,58 @@ export function verifyDiditWebhookSignature(
   return false;
 }
 
+/** Didit's `detail` text on an error, clipped, or ''. Never the request, never a key. */
+async function safeDetail(res: Response): Promise<string> {
+  try {
+    const body = (await res.json()) as { detail?: unknown };
+    return typeof body.detail === 'string' ? `: ${body.detail.slice(0, 120)}` : '';
+  } catch {
+    return '';
+  }
+}
+
+export interface DiditPing {
+  ok: boolean;
+  /** HTTP status from Didit, or null when it could not be reached. */
+  status: number | null;
+  /** A plain sentence for an admin. Contains no key, no secret and no response body. */
+  message: string;
+}
+
+/**
+ * A read-only connection test for the admin screen: lists at most one session. It creates
+ * no session (so nothing is verified or billed as a verification), and it never returns
+ * the key or Didit's raw response. The key needs the read:sessions permission.
+ */
+export async function diditPing(): Promise<DiditPing> {
+  if (!process.env.DIDIT_API_KEY) return { ok: false, status: null, message: 'DIDIT_API_KEY is not set.' };
+  try {
+    const res = await diditFetch('/v3/sessions/?limit=1', { method: 'GET', timeoutMs: 8_000 });
+    if (res.ok) return { ok: true, status: res.status, message: 'Didit accepted the API key.' };
+    if (res.status === 401 || res.status === 403) {
+      return {
+        ok: false,
+        status: res.status,
+        message: 'Didit refused the API key. Check it is the key of the right application and has the read:sessions permission.',
+      };
+    }
+    return { ok: false, status: res.status, message: `Didit answered with an unexpected status (${res.status}).` };
+  } catch {
+    return { ok: false, status: null, message: 'Could not reach Didit (network error or timeout).' };
+  }
+}
+
 export const diditProvider: IdentityProvider = {
   name: 'didit',
 
-  isConfigured: () => !!process.env.DIDIT_API_KEY && !!process.env.DIDIT_WORKFLOW_ID,
+  isConfigured: () => !!process.env.DIDIT_API_KEY && !!diditWorkflowId(),
   webhookConfigured: () => !!process.env.DIDIT_WEBHOOK_SECRET,
 
   async createSession(input: CreateSessionInput): Promise<CreatedSession> {
     const res = await diditFetch('/v3/session/', {
       method: 'POST',
       body: {
-        workflow_id: process.env.DIDIT_WORKFLOW_ID,
+        workflow_id: diditWorkflowId(),
         // Our stable identifier for the teacher. A reference, not personal data.
         vendor_data: input.tutorId,
         callback: input.returnUrl,
@@ -189,7 +236,7 @@ export const diditProvider: IdentityProvider = {
         ...(process.env.DIDIT_SANDBOX_SCENARIO ? { sandbox_scenario: process.env.DIDIT_SANDBOX_SCENARIO } : {}),
       },
     });
-    if (!res.ok) throw new Error(`Didit create session failed (${res.status})`);
+    if (!res.ok) throw new Error(`Didit create session failed (${res.status})${await safeDetail(res)}`);
     const body = (await res.json()) as { session_id?: string; url?: string };
     if (!body.session_id || !body.url) throw new Error('Didit returned no session or URL');
     return { sessionRef: body.session_id, url: body.url };
@@ -227,8 +274,8 @@ export const diditProvider: IdentityProvider = {
   },
 
   async getOutcome(sessionRef: string): Promise<ProviderOutcome> {
-    const res = await diditFetch(`/v3/session/${encodeURIComponent(sessionRef)}/decision/`, { method: 'GET' });
-    if (!res.ok) throw new Error(`Didit retrieve session failed (${res.status})`);
+    const res = await diditFetch(`/v3/session/${encodeURIComponent(sessionRef)}/decision/`, { method: 'GET', timeoutMs: DECISION_TIMEOUT_MS });
+    if (!res.ok) throw new Error(`Didit retrieve session failed (${res.status})${await safeDetail(res)}`);
     return mapDiditDecision(await res.json(), { minimumAge: identityRouting.minimumAge });
   },
 

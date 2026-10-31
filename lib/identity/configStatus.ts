@@ -4,6 +4,7 @@
 // instead of an error; this is how an admin finds out why.
 
 import { primaryProviderFromEnv } from '@/config/identityRouting';
+import { diditWorkflowId } from './diditConfig';
 import type { ProviderName } from './types';
 
 type Env = Record<string, string | undefined>;
@@ -22,7 +23,8 @@ export interface IdentitySetupProblem {
   message: string;
 }
 
-const set = (env: Env, name: string) => (env[name] ?? '').trim().length > 0;
+const set = (env: Env, name: string) =>
+  name === 'DIDIT_WORKFLOW_ID' ? diditWorkflowId(env).length > 0 : (env[name] ?? '').trim().length > 0;
 
 export function identitySetupProblems(env: Env = process.env): IdentitySetupProblem[] {
   const primary = primaryProviderFromEnv(env);

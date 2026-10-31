@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PROOF_BUCKET } from '@/lib/verificationV2/constants';
 import { guardAdminV2 } from '@/lib/verificationV2/adminGuard';
+import { schemaNotReady } from '@/lib/verificationV2/schemaReady';
 import { evidenceFor } from '@/config/verificationEvidence';
 
 export const dynamic = 'force-dynamic';
@@ -27,6 +28,8 @@ export async function GET(_req: NextRequest, { params }: { params: { tutorId: st
     )
     .eq('tutor_id', tutorId)
     .maybeSingle();
+  const setup = schemaNotReady(error);
+  if (setup) return setup;
   if (error) {
     console.error('[admin/verification-v2/detail]', error.message);
     return NextResponse.json({ error: 'Could not load the application' }, { status: 500 });

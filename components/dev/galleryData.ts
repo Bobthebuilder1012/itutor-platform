@@ -15,6 +15,7 @@ export function mkState(
     consentAt: '2026-10-01T10:00:00.000Z',
     submittedAt: null,
     decisionReason: null,
+    reference: 'VR-7D3B1F42',
     editable: true,
     step: 2,
     credentials: [],
@@ -29,6 +30,7 @@ export function mkState(
       canRetry: false,
       furtherRoute: false,
       countries: identityRouting.countries,
+      available: true,
       ...identity,
     },
   };

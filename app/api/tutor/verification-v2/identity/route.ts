@@ -8,6 +8,7 @@
 // the provider name and its session reference. Never an ID image, an ID number
 // or a client secret.
 
+import { schemaNotReady } from '@/lib/verificationV2/schemaReady';
 import { NextRequest, NextResponse } from 'next/server';
 import { startIdentityCheck } from '@/lib/identity/start';
 import { blocked, guardV2, hasConsent, isEditable, loadRow } from '@/lib/verificationV2/server';
@@ -42,6 +43,8 @@ export async function POST(request: NextRequest) {
     if (result.kind === 'redirect') return NextResponse.json({ url: result.url, status: 'pending' });
     return NextResponse.json({ status: result.kind });
   } catch (err) {
+    const setup = schemaNotReady(err);
+    if (setup) return setup;
     console.error('[verification-v2/identity] failed:', (err as Error).message);
     return NextResponse.json({ error: 'Could not start the identity check' }, { status: 500 });
   }

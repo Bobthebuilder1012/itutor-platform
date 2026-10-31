@@ -4,6 +4,7 @@
 // tutor-credential-proofs bucket. The file goes straight from the browser to
 // Storage. The filename is never part of the path.
 
+import { schemaNotReady } from '@/lib/verificationV2/schemaReady';
 import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
 import { PROOF_BUCKET } from '@/lib/verificationV2/constants';
@@ -37,6 +38,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ path, token: data.token });
   } catch (err) {
+    const setup = schemaNotReady(err);
+    if (setup) return setup;
     console.error('[verification-v2/upload-url] failed:', (err as Error).message);
     return NextResponse.json({ error: 'Could not prepare the upload' }, { status: 500 });
   }

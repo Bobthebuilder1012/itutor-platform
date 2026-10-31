@@ -221,7 +221,7 @@ describe('one notice per change: duplicates', () => {
 // ---------------------------------------------------------------
 describe('the flag is off', () => {
   beforeEach(() => {
-    delete process.env.VERIFICATION_V2_ENABLED;
+    process.env.VERIFICATION_V2_ENABLED = 'false';
   });
 
   it('notifyTeacher does nothing and never touches the database', async () => {
@@ -363,9 +363,10 @@ describe('the status page and the badge cache refresh by themselves', () => {
   const dto = (over: Partial<VerificationV2StateDto> = {}): VerificationV2StateDto => ({
     status: 'IN_REVIEW',
     consentAt: 'x',
-    identity: { status: 'verified', reason: null, country: 'TT', attempts: 1, maxAttempts: 3, canRetry: false, furtherRoute: false, countries: [] },
+    identity: { status: 'verified', reason: null, country: 'TT', attempts: 1, maxAttempts: 3, canRetry: false, furtherRoute: false, countries: [], available: true },
     submittedAt: 'a',
     decisionReason: null,
+    reference: null,
     editable: false,
     step: 4,
     credentials: [],
