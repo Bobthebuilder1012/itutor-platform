@@ -187,6 +187,15 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // The teacher verification page: a signed-out visitor is redirected to the login page here,
+  // with a real 307. (A redirect from inside the page streams as a 200 with a client-side hop.)
+  // Role checks stay in the page and its API routes.
+  if (pathname.startsWith('/tutor/verification-v2') && !hasSessionCookie(request)) {
+    const login = new URL('/login', request.url);
+    login.searchParams.set('next', pathname);
+    return NextResponse.redirect(login);
+  }
+
   const attributionCookies = collectAttributionCookies(request);
 
   // Block unauthenticated access to admin/reviewer routes at the server level
