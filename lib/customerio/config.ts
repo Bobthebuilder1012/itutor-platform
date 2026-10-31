@@ -11,6 +11,8 @@
 // can mail them. So the integration is off unless explicitly switched on, and
 // carries an allowlist for safely exercising it against a live-data database.
 
+import { checkRecipient, outboundEmailOpen } from '@/lib/email/allowlist';
+
 /** Track API regions. A US-region key silently 404s against the EU host. */
 const REGIONS = {
   us: 'https://track.customer.io/api/v1',
@@ -53,6 +55,9 @@ function parseEmailList(raw: string | undefined): ReadonlySet<string> {
  */
 export function getCustomerIoConfig(): CustomerIoConfig | null {
   if (process.env.CUSTOMERIO_ENABLED !== 'true') return null;
+  // Fails closed outside production: with no EMAIL_ALLOWLIST there is no Customer.io at
+  // all (sync, events and delete all go through this function). See lib/email/allowlist.ts.
+  if (!outboundEmailOpen()) return null;
 
   const siteId = process.env.CUSTOMERIO_SITE_ID?.trim();
   const apiKey = process.env.CUSTOMERIO_API_KEY?.trim();
@@ -96,6 +101,9 @@ export function isProfileSyncable(
   if (config.allowedEmails.size > 0 && !config.allowedEmails.has(email)) {
     return { allowed: false, reason: 'not_in_allowlist' };
   }
+
+  // The shared rule (EMAIL_ALLOWLIST), the same one the email sender applies.
+  if (!checkRecipient(email).allowed) return { allowed: false, reason: 'not_in_email_allowlist' };
 
   return { allowed: true };
 }

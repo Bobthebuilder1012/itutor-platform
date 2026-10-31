@@ -97,6 +97,16 @@ API routes under `/api/cron/` handle scheduled tasks: `send-reminders`, `process
 - **Firebase is browser-only**: The `next.config.js` excludes Firebase from the server bundle. Never import Firebase in Server Components or API routes.
 - **Image domain**: Supabase storage images must come from `nfkrfciozjxrodkusrhh.supabase.co` — already in `next.config.js` allowed domains.
 
+## Staging safety (outbound email)
+
+Staging is a Supabase branch of production and holds **real customer email addresses**. So outside production the app sends email to **nobody** unless `EMAIL_ALLOWLIST` is set:
+
+- `EMAIL_ALLOWLIST` is comma-separated; an entry starting with `@` matches a whole domain, anything else must match exactly; case-insensitive.
+- Production (`VERCEL_ENV=production`, or `NODE_ENV=production` off Vercel) with the list unset sends to everyone, as it always has. Everywhere else, an unset or empty list means **no email at all**.
+- The rule lives in `lib/email/allowlist.ts`. `sendEmail` (`lib/services/emailService.ts`), `app/api/auth/send-verification` and every Customer.io call (`lib/customerio/*`) use it. New code that sends email or talks to Customer.io must use the same function, never call Resend directly.
+- Not covered by it (they run outside this app): Supabase Auth emails and the `send-payment-receipt` edge function.
+- Never run a script that mails, messages or charges existing users against staging.
+
 ## Environment variables
 
 Required in `.env.local`:

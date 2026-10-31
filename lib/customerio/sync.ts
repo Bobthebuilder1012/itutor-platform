@@ -8,6 +8,7 @@
 //
 // Server-only.
 
+import { userMaySync } from './gate';
 import { getServiceClient } from '@/lib/supabase/server';
 import { getCustomerIoConfig, isProfileSyncable } from './config';
 import { identify, deleteCustomer, REQUEST_PATH_CALL, type CallOptions } from './client';
@@ -228,6 +229,7 @@ export async function syncProfileNow(userId: string): Promise<SyncResult> {
  */
 export async function removeCustomer(userId: string): Promise<boolean> {
   if (!getCustomerIoConfig()) return false;
+  if (!(await userMaySync(userId))) return false;
 
   const result = await deleteCustomer(userId);
   if (!result.ok) {

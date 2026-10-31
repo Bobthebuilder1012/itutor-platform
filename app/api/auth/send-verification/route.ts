@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServiceClient } from '@/lib/supabase/server';
 import { randomInt, createHash } from 'crypto';
 import { Resend } from 'resend';
+import { checkRecipient, domainOf } from '@/lib/email/allowlist';
 import { renderEmail } from '@/lib/email/design';
 
 export const dynamic = 'force-dynamic';
@@ -71,6 +72,14 @@ export async function POST(req: Request) {
         },
       ],
     });
+
+    // Same allowlist as every other email (fails closed outside production). Reported as
+    // sent, like a suppressed sendEmail: the sign-up flow must not break on staging.
+    const decision = checkRecipient(email);
+    if (!decision.allowed) {
+      console.log(`[send-verification] suppressed (${decision.reason}) domain=${domainOf(email)}`);
+      return NextResponse.json({ sent: true, expiresIn: 600 });
+    }
 
     const { error: emailError } = await resend.emails.send({
       from: process.env.RESEND_FROM_EMAIL || 'iTutor <hello@myitutor.com>',

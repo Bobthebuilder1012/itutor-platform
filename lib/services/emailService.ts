@@ -4,6 +4,7 @@
 // Handles all email sending logic with Resend integration
 
 import { Resend } from 'resend';
+import { checkRecipient, domainOf } from '@/lib/email/allowlist';
 
 let resendClient: Resend | null = null;
 
@@ -38,32 +39,15 @@ export interface EmailResult {
 }
 
 /**
- * Optional recipient allowlist, for environments that hold real user data.
+ * Recipient allowlist, enforced here and nowhere else in this file: every send goes
+ * through sendEmail. The rule (lib/email/allowlist.ts) fails CLOSED outside production:
+ * with EMAIL_ALLOWLIST unset or empty, nobody is mailed. In production an unset list
+ * still means no filtering, so production behaviour is unchanged.
  *
- * Staging is a branch of production and carries real customer addresses — 294
- * of its 307 profiles are external. The `is_dev_account` column does NOT help
- * here: it exists, but it is only ever read to hide dev tutors from listings
- * (`app/api/tutors/listed-ids`, `app/api/groups`, the find-tutors and tutor
- * profile pages). No email path consults it, so flagging profiles suppresses
- * nothing. This does, and it works for recipients who have no profile row at
- * all.
- *
- * Format: comma-separated. An entry beginning with `@` matches a whole domain;
- * anything else must match the address exactly. Comparison is case-insensitive.
- *
- * Unset — which is production — means no filtering and no behaviour change.
+ * Staging is a branch of production and carries real customer addresses, which is why
+ * an unconfigured environment must send nothing. The `is_dev_account` column does not
+ * help: no email path reads it.
  */
-function isAllowedRecipient(to: string): boolean {
-  const raw = process.env.EMAIL_ALLOWLIST?.trim();
-  if (!raw) return true; // No allowlist configured → send, as before.
-
-  const recipient = to.trim().toLowerCase();
-  return raw
-    .split(',')
-    .map((entry) => entry.trim().toLowerCase())
-    .filter(Boolean)
-    .some((entry) => (entry.startsWith('@') ? recipient.endsWith(entry) : recipient === entry));
-}
 
 /**
  * Send an email using Resend
@@ -79,13 +63,15 @@ export async function sendEmail({
   // No RESEND_API_KEY configured (e.g. staging without email set up) → no-op,
   // so nothing is sent by accident. Sending is enabled the moment a key exists.
   if (!resend) {
-    console.log(`[EMAIL SKIPPED — no RESEND_API_KEY] to=${to} subject=${subject}`);
+    console.log(`[EMAIL SKIPPED — no RESEND_API_KEY] domain=${domainOf(to)}`);
     return { success: true, messageId: 'disabled' };
   }
   // Reported as success, matching the no-key path above: a suppressed send is a
   // deliberate outcome, not a failure for the caller to retry or surface.
-  if (!isAllowedRecipient(to)) {
-    console.log(`[EMAIL SUPPRESSED — not in EMAIL_ALLOWLIST] to=${to} subject=${subject}`);
+  const decision = checkRecipient(to);
+  if (!decision.allowed) {
+    // The domain only: the address is a customer's personal data.
+    console.log(`[EMAIL SUPPRESSED — ${decision.reason}] domain=${domainOf(to)}`);
     return { success: true, messageId: 'suppressed' };
   }
   try {

@@ -11,6 +11,7 @@
 // trigger and a funnel query disagree about what an event is called, and the
 // taxonomy file is explicit that renaming after data accumulates is expensive.
 
+import { userMaySync } from './gate';
 import { PRODUCT_EVENTS, type ProductEvent } from '@/lib/analytics/events';
 import { getCustomerIoConfig } from './config';
 import { trackEvent, REQUEST_PATH_CALL } from './client';
@@ -83,6 +84,7 @@ export async function forwardEvent(
     if (!userId) return;
     if (!FORWARDED.has(event)) return;
     if (!getCustomerIoConfig()) return;
+    if (!(await userMaySync(userId))) return;
 
     // Bounded to a single 3s attempt: track() is awaited inside user-facing
     // requests (registration, enrolment), so this must add a small, predictable
