@@ -11,6 +11,7 @@ import { isVerificationV2Enabled } from '@/lib/featureFlags/verificationV2';
 import { isRuleRefusal, setIdentityStatus } from '@/lib/verification/setStatus';
 import { identityRouting } from '@/config/identityRouting';
 import { notifyIdentityOutcome } from './notify';
+import { nameMatchExtra } from '@/lib/identity/nameMatch';
 import { normalizeIdentityReason, normalizeIdentityStatus, outcomeToStored } from '@/lib/identity/mapping';
 import { getProvider, routeForCountry } from '@/lib/identity/registry';
 import { decideNextStep } from '@/lib/identity/routing';
@@ -130,6 +131,19 @@ export function identityAvailable(row: VerificationRow | null): boolean {
   return routeForCountry(row?.identity_country).length > 0;
 }
 
+/**
+ * The identity step no longer holds anything up: it is done, or this environment has no
+ * provider to run it (so it cannot be done here yet). Consent is still required.
+ */
+export function identityStepDone(row: VerificationRow | null): boolean {
+  return hasConsent(row) && (row?.identity_status === 'verified' || !identityAvailable(row));
+}
+
+/** A verified teacher may add credentials (as pending approval) and edit their extras. */
+export function isVerifiedTeacher(row: VerificationRow | null): boolean {
+  return row?.status === 'VERIFIED';
+}
+
 /** Steps 1 and 2 done. */
 export function hasIdentity(row: VerificationRow | null): boolean {
   return hasConsent(row) && row?.identity_status === 'verified';
@@ -153,7 +167,7 @@ export async function refreshIdentity(db: Db, row: VerificationRow): Promise<Ver
   const open: Array<IdentityStatus | null> = [null, 'pending', 'processing', 'retryable_failure'];
   if (!provider || !ref || !open.includes(row.identity_status)) return row;
   try {
-    const { outcome, providerCode, documentType } = await getProvider(provider).getOutcome(ref);
+    const { outcome, providerCode, documentType, documentName } = await getProvider(provider).getOutcome(ref);
     const stored = outcomeToStored(outcome);
     if (stored.status === row.identity_status && stored.reason === row.identity_error_code) return row;
 
@@ -168,6 +182,7 @@ export async function refreshIdentity(db: Db, row: VerificationRow): Promise<Ver
       actor: 'system',
       sessionRef: ref,
       provider,
+      extra: await nameMatchExtra(db, row.tutor_id, documentName),
       db,
     });
     if (!result.ok) {
@@ -189,7 +204,7 @@ export async function loadCredentials(db: Db, tutorId: string): Promise<Credenti
   const { data, error } = await db
     .from('tutor_credentials_v2')
     .select(
-      'id, kind, subject, grade, exam_year, school, degree, field, graduation_year, proof_url, proof_path, proof_filename'
+      'id, kind, subject, grade, exam_year, school, degree, field, graduation_year, proof_url, proof_path, proof_filename, pending_approval'
     )
     .eq('tutor_id', tutorId)
     .order('created_at', { ascending: true });
@@ -207,6 +222,7 @@ export async function loadCredentials(db: Db, tutorId: string): Promise<Credenti
     proofUrl: c.proof_url,
     proofFilename: c.proof_filename,
     hasProofFile: !!c.proof_path,
+    pending: !!c.pending_approval,
   }));
 }
 
@@ -293,6 +309,7 @@ export function buildState(
     decisionReason: row?.status === 'REJECTED' || (row?.status === 'IN_PROGRESS' && row.decision_reason) ? row.decision_reason : null,
     reference: row ? `VR-${row.tutor_id.replace(/-/g, '').slice(0, 8).toUpperCase()}` : null,
     editable: !revokedProfile && isEditable(row),
+    canAddCredentials: !revokedProfile && (isEditable(row) || isVerifiedTeacher(row)),
     step,
     credentials,
     extras,

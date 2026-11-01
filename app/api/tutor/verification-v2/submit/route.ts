@@ -12,8 +12,7 @@ import {
   blocked,
   guardV2,
   hasConsent,
-  hasIdentity,
-  identityAvailable,
+  identityStepDone,
   isEditable,
   loadCredentials,
   loadRow,
@@ -32,7 +31,7 @@ export async function POST() {
     if (!hasConsent(row)) return blocked('Please accept the notice first', 409, { code: 'consent_required' });
     // The identity check is required, unless this environment has no provider to run it:
     // then the teacher can still send everything else, and an admin cannot approve until it is done.
-    if (!hasIdentity(row) && identityAvailable(row)) {
+    if (!identityStepDone(row)) {
       return blocked('Complete the identity check first', 409, { code: 'identity_required' });
     }
     if ((await loadCredentials(db, tutorId)).length === 0) {

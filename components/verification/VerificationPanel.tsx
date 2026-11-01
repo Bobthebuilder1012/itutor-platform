@@ -75,6 +75,13 @@ export function PanelBody({ detail }: { detail: PublicDetail }) {
           </ul>
         </section>
       )}
+
+      <a
+        href={`/verification-details/${detail.tutorId}`}
+        className="inline-flex min-h-[44px] items-center font-semibold text-emerald-700 underline"
+      >
+        See qualifications and proof
+      </a>
     </div>
   );
 }

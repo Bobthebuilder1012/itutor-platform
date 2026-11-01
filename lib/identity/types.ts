@@ -53,6 +53,8 @@ export interface ProviderOutcome {
   resumeUrl?: string | null;
   /** The document type the provider reports (passport, ID card, driver's licence). A label only. */
   documentType?: string | null;
+  /** The name on the document, used ONLY to compare with the profile name (lib/identity/nameMatch.ts). Never stored. */
+  documentName?: string | null;
 }
 
 export interface CreateSessionInput {

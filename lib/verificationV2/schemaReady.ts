@@ -1,4 +1,4 @@
-// "Verification setup is not finished on this environment."
+// "Verification setup is not finished yet."
 //
 // The verification tables and columns come from migrations 270 to 275. An environment that
 // has the code but not the migrations (staging, before the SQL is run) must not show an

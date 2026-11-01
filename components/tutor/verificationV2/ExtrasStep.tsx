@@ -7,12 +7,14 @@ import { Card, ErrorBanner, PrimaryButton, SecondaryButton, STEP_META, inputClas
 interface Props {
   state: VerificationV2StateDto;
   onChange: () => Promise<void>;
-  onBack: () => void;
+  onBack?: () => void;
+  /** The teacher is already verified: extras can be edited freely (they are not checked by iTutor). */
+  afterVerified?: boolean;
 }
 
 const INPUT = inputClass;
 
-export default function ExtrasStep({ state, onChange, onBack }: Props) {
+export default function ExtrasStep({ state, onChange, onBack, afterVerified = false }: Props) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [linkUrl, setLinkUrl] = useState('');
@@ -66,7 +68,11 @@ export default function ExtrasStep({ state, onChange, onBack }: Props) {
   }
 
   return (
-    <Card title={STEP_META[4].title} subtitle={STEP_META[4].subtitle} state={state.extras.length > 0 ? 'complete' : 'optional'}>
+    <Card
+      title={STEP_META[4].title}
+      subtitle={STEP_META[4].subtitle}
+      state={afterVerified ? undefined : state.extras.length > 0 ? 'complete' : 'optional'}
+    >
       <p className="mb-5 text-sm text-muted-foreground">
         Add up to {MAX_EXTRAS} things that show who you are as a teacher, such as a course, an award or a
         project. These are shown publicly once you are verified.
@@ -120,14 +126,16 @@ export default function ExtrasStep({ state, onChange, onBack }: Props) {
 
       <div className="mt-6">
         <ErrorBanner message={error} />
-        <div className="flex gap-3">
-          <SecondaryButton onClick={onBack}>Back</SecondaryButton>
-          {state.editable && (
-            <PrimaryButton onClick={submit} busy={submitting}>
-              Submit for review
-            </PrimaryButton>
-          )}
-        </div>
+        {!afterVerified && onBack && (
+          <div className="flex gap-3">
+            <SecondaryButton onClick={onBack}>Back</SecondaryButton>
+            {state.editable && (
+              <PrimaryButton onClick={submit} busy={submitting}>
+                Submit for review
+              </PrimaryButton>
+            )}
+          </div>
+        )}
       </div>
     </Card>
   );

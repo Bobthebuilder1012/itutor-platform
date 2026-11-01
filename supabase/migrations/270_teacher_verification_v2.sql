@@ -119,6 +119,10 @@ CREATE TABLE IF NOT EXISTS public.tutor_credentials_v2 (
   proof_path text,
   proof_filename text CHECK (proof_filename IS NULL OR char_length(proof_filename) <= 100),
 
+  -- A credential a VERIFIED teacher adds later is pending until an admin approves it. It is
+  -- visible to the teacher and admins only; the Verified badge is unaffected either way.
+  pending_approval boolean NOT NULL DEFAULT false,
+
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
 
@@ -137,8 +141,14 @@ CREATE TABLE IF NOT EXISTS public.tutor_credentials_v2 (
   )
 );
 
+-- A database that already had the table (re-run) gets the column too.
+ALTER TABLE public.tutor_credentials_v2 ADD COLUMN IF NOT EXISTS pending_approval boolean NOT NULL DEFAULT false;
+
 CREATE INDEX IF NOT EXISTS idx_tutor_credentials_v2_tutor
   ON public.tutor_credentials_v2 (tutor_id);
+
+CREATE INDEX IF NOT EXISTS idx_tutor_credentials_v2_pending
+  ON public.tutor_credentials_v2 (tutor_id) WHERE pending_approval;
 
 -- ---------------------------------------------------
 -- 4. Extras (optional, at most 3 per teacher)
@@ -326,31 +336,45 @@ CREATE POLICY "v2 tutor reads own credentials"
 DROP POLICY IF EXISTS "v2 tutor inserts own credentials" ON public.tutor_credentials_v2;
 CREATE POLICY "v2 tutor inserts own credentials"
   ON public.tutor_credentials_v2 FOR INSERT TO authenticated
-  WITH CHECK (tutor_id = auth.uid() AND public.tutor_v2_is_editable(tutor_id));
+  WITH CHECK (
+    tutor_id = auth.uid()
+    AND (public.tutor_v2_is_editable(tutor_id) OR (public.tutor_v2_is_verified(tutor_id) AND pending_approval))
+  );
 
 DROP POLICY IF EXISTS "v2 tutor updates own credentials" ON public.tutor_credentials_v2;
 CREATE POLICY "v2 tutor updates own credentials"
   ON public.tutor_credentials_v2 FOR UPDATE TO authenticated
-  USING (tutor_id = auth.uid() AND public.tutor_v2_is_editable(tutor_id))
-  WITH CHECK (tutor_id = auth.uid() AND public.tutor_v2_is_editable(tutor_id));
+  USING (
+    tutor_id = auth.uid()
+    AND (public.tutor_v2_is_editable(tutor_id) OR (public.tutor_v2_is_verified(tutor_id) AND pending_approval))
+  )
+  WITH CHECK (
+    tutor_id = auth.uid()
+    AND (public.tutor_v2_is_editable(tutor_id) OR (public.tutor_v2_is_verified(tutor_id) AND pending_approval))
+  );
 
 DROP POLICY IF EXISTS "v2 tutor deletes own credentials" ON public.tutor_credentials_v2;
 CREATE POLICY "v2 tutor deletes own credentials"
   ON public.tutor_credentials_v2 FOR DELETE TO authenticated
-  USING (tutor_id = auth.uid() AND public.tutor_v2_is_editable(tutor_id));
+  USING (
+    tutor_id = auth.uid()
+    AND (public.tutor_v2_is_editable(tutor_id) OR (public.tutor_v2_is_verified(tutor_id) AND pending_approval))
+  );
 
 DROP POLICY IF EXISTS "v2 admins read all credentials" ON public.tutor_credentials_v2;
 CREATE POLICY "v2 admins read all credentials"
   ON public.tutor_credentials_v2 FOR SELECT TO authenticated
   USING (public.is_admin_or_reviewer(auth.uid()));
 
--- Students and parents see credentials of VERIFIED teachers only.
+-- Students and parents see APPROVED credentials of VERIFIED teachers only. A pending one is
+-- invisible to them.
 DROP POLICY IF EXISTS "v2 students parents read verified credentials" ON public.tutor_credentials_v2;
 CREATE POLICY "v2 students parents read verified credentials"
   ON public.tutor_credentials_v2 FOR SELECT TO authenticated
   USING (
     public.tutor_v2_viewer_is_student_or_parent()
     AND public.tutor_v2_is_verified(tutor_id)
+    AND NOT pending_approval
   );
 
 -- tutor_extras_v2
@@ -362,18 +386,18 @@ CREATE POLICY "v2 tutor reads own extras"
 DROP POLICY IF EXISTS "v2 tutor inserts own extras" ON public.tutor_extras_v2;
 CREATE POLICY "v2 tutor inserts own extras"
   ON public.tutor_extras_v2 FOR INSERT TO authenticated
-  WITH CHECK (tutor_id = auth.uid() AND public.tutor_v2_is_editable(tutor_id));
+  WITH CHECK (tutor_id = auth.uid() AND (public.tutor_v2_is_editable(tutor_id) OR public.tutor_v2_is_verified(tutor_id)));
 
 DROP POLICY IF EXISTS "v2 tutor updates own extras" ON public.tutor_extras_v2;
 CREATE POLICY "v2 tutor updates own extras"
   ON public.tutor_extras_v2 FOR UPDATE TO authenticated
-  USING (tutor_id = auth.uid() AND public.tutor_v2_is_editable(tutor_id))
-  WITH CHECK (tutor_id = auth.uid() AND public.tutor_v2_is_editable(tutor_id));
+  USING (tutor_id = auth.uid() AND (public.tutor_v2_is_editable(tutor_id) OR public.tutor_v2_is_verified(tutor_id)))
+  WITH CHECK (tutor_id = auth.uid() AND (public.tutor_v2_is_editable(tutor_id) OR public.tutor_v2_is_verified(tutor_id)));
 
 DROP POLICY IF EXISTS "v2 tutor deletes own extras" ON public.tutor_extras_v2;
 CREATE POLICY "v2 tutor deletes own extras"
   ON public.tutor_extras_v2 FOR DELETE TO authenticated
-  USING (tutor_id = auth.uid() AND public.tutor_v2_is_editable(tutor_id));
+  USING (tutor_id = auth.uid() AND (public.tutor_v2_is_editable(tutor_id) OR public.tutor_v2_is_verified(tutor_id)));
 
 DROP POLICY IF EXISTS "v2 admins read all extras" ON public.tutor_extras_v2;
 CREATE POLICY "v2 admins read all extras"

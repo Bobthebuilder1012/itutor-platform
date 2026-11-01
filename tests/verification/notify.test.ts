@@ -368,6 +368,7 @@ describe('the status page and the badge cache refresh by themselves', () => {
     decisionReason: null,
     reference: null,
     editable: false,
+    canAddCredentials: false,
     step: 4,
     credentials: [],
     extras: [],

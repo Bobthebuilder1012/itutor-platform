@@ -32,7 +32,10 @@ ALTER TABLE public.tutor_verification_v2
   ADD COLUMN IF NOT EXISTS identity_session_refs jsonb NOT NULL DEFAULT '[]'::jsonb,
   ADD COLUMN IF NOT EXISTS identity_providers_tried text[] NOT NULL DEFAULT '{}',
   ADD COLUMN IF NOT EXISTS identity_country text,
-  ADD COLUMN IF NOT EXISTS identity_provider_code text;
+  ADD COLUMN IF NOT EXISTS identity_provider_code text,
+  -- Whether the name on the verified document matches the teacher's profile name. A yes or no
+  -- only: the document name itself is never stored. Shown to admins.
+  ADD COLUMN IF NOT EXISTS identity_name_match boolean;
 
 ALTER TABLE public.tutor_verification_v2 DROP CONSTRAINT IF EXISTS tutor_verification_v2_identity_provider_check;
 ALTER TABLE public.tutor_verification_v2

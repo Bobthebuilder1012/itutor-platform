@@ -21,6 +21,8 @@ export interface ReviewDetail {
       attempts: number;
       verifiedAt: string | null;
       redacted: boolean;
+      /** Does the name on the verified document match the profile name? null = not checked. */
+      nameMatch?: boolean | null;
     };
     submittedAt: string | null;
     decisionReason: string | null;
@@ -31,6 +33,8 @@ export interface ReviewDetail {
     id: string; kind: string; subject: string | null; grade: string | null; examYear: number | null;
     school: string | null; degree: string | null; field: string | null; graduationYear: number | null;
     proofUrl: string | null; proofFilename: string | null; proofLink: string | null; proofDeleted: boolean;
+    /** Added after verification; waiting for an admin. */
+    pending?: boolean;
     evidence: { key: string; label: string; criteria: string[] }[];
   }[];
   extras: { id: string; title: string; description: string; linkUrl: string | null }[];
@@ -59,6 +63,7 @@ export function ReviewView({
   onNote = () => {},
   busy,
   onAct,
+  onCredential = () => {},
 }: {
   detail: ReviewDetail;
   isAdmin: boolean;
@@ -70,6 +75,7 @@ export function ReviewView({
   onNote?: (v: string) => void;
   busy: boolean;
   onAct: (action: 'approve' | 'reject' | 'revoke' | 'request-info') => void;
+  onCredential?: (action: 'approve' | 'reject', credentialId: string) => void;
 }) {
   const status = detail.application.status;
   const canDecide = status === 'IN_REVIEW';
@@ -96,10 +102,16 @@ export function ReviewView({
           <span className={id.status === 'verified' ? 'font-semibold text-green-700' : 'font-semibold text-red-700'}>
             {id.status ? IDENTITY_SUMMARY[id.status] ?? id.status : 'Not checked'}
           </span>
-          {id.errorCode && <> ({id.errorCode})</>}{id.attempts > 0 && <> · {id.attempts} attempt(s)</>}
+          {id.errorCode && <> ({id.errorCode})</>}{id.attempts > 0 && <> · {id.attempts} {id.attempts === 1 ? 'attempt' : 'attempts'}</>}
           {id.provider && (
             <> · checked by {id.provider}{id.country ? ` (document from ${id.country})` : ''}</>
           )}
+        </p>
+        <p className="mt-1 text-sm">
+          Name on the ID matches the profile name:{' '}
+          <span className={id.nameMatch === true ? 'font-semibold text-green-700' : id.nameMatch === false ? 'font-semibold text-red-700' : 'text-gray-500'}>
+            {id.nameMatch === true ? 'Yes' : id.nameMatch === false ? 'No' : 'Not checked'}
+          </span>
         </p>
         {id.providerCode && <p className="mt-1 text-xs text-gray-500">Provider code (for coverage testing): {id.providerCode}</p>}
         <p className="mt-1 text-xs text-gray-500">
@@ -114,6 +126,14 @@ export function ReviewView({
         <ul className="mt-3 space-y-4">
           {detail.credentials.map((c) => (
             <li key={c.id} className="rounded-lg border border-gray-200 p-4 text-sm">
+              {c.pending && (
+                <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                  <span className="text-sm font-semibold text-amber-800">Added after verification: waiting for approval</span>
+                  <button onClick={() => onCredential('approve', c.id)} disabled={busy} className="rounded-lg bg-itutor-green px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">Approve credential</button>
+                  <button onClick={() => onCredential('reject', c.id)} disabled={busy} className="rounded-lg border-2 border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 disabled:opacity-50">Do not approve</button>
+                  <span className="text-xs text-amber-800">Choose a reason below first. The teacher keeps their Verified badge either way.</span>
+                </div>
+              )}
               <p className="font-semibold">
                 {c.kind === 'DEGREE'
                   ? `${c.degree}${c.field ? `, ${c.field}` : ''} · ${c.school} · ${c.graduationYear}`
@@ -286,6 +306,34 @@ export default function AdminV2Review({ tutorId }: { tutorId: string }) {
     }
   }
 
+  async function credentialAct(action: 'approve' | 'reject', credentialId: string) {
+    if (action === 'reject' && !reason) {
+      setError('Choose a reason from the list.');
+      return;
+    }
+    if (!confirm(action === 'approve' ? 'Approve this credential?' : 'Do not approve this credential? It will be removed.')) return;
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await fetch(`/api/admin/verification-v2/${tutorId}/credentials/${credentialId}/${action}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason, note }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || 'Failed');
+      setMessage(action === 'approve' ? 'Credential approved. The teacher has been told.' : 'Credential removed. The teacher has been told.');
+      setReason('');
+      setNote('');
+      await load();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (profileLoading || !profile) return null;
   const isAdmin = profile.role === 'admin';
   const displayName = profile.display_name || profile.full_name || 'Admin';
@@ -299,7 +347,7 @@ export default function AdminV2Review({ tutorId }: { tutorId: string }) {
         {!detail && !error && <p className="text-sm text-gray-500">Loading…</p>}
         {error && <div role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div>}
         {message && <div className="mb-4 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800">{message}</div>}
-        {detail && <ReviewView detail={detail} isAdmin={isAdmin} reason={reason} onReason={setReason} note={note} onNote={setNote} busy={busy} onAct={act} />}
+        {detail && <ReviewView detail={detail} isAdmin={isAdmin} reason={reason} onReason={setReason} note={note} onNote={setNote} busy={busy} onAct={act} onCredential={credentialAct} />}
       </div>
     </DashboardLayout>
   );

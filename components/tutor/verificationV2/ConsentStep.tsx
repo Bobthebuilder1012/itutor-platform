@@ -49,7 +49,7 @@ export default function ConsentStep({ state, onChange, onNext }: Props) {
         <li>
           <span className="font-semibold">What is public.</span> Once you are verified, your qualification
           details (subject, grade, year, school, degree) and your extras are shown to students and parents on
-          your profile. Proof files are seen only by our reviewers.
+          your profile. Your proof files, such as a certificate scan, are seen by our reviewers and, once a credential is approved, by students and parents through short-lived links.
         </li>
         <li>
           <span className="font-semibold">Your ID.</span> Our identity check partner handles your ID and selfie. We never see or

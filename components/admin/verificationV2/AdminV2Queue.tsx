@@ -23,6 +23,8 @@ export interface Item {
   decidedAt: string | null;
   credentialCount: number;
   extraCount: number;
+  /** New credentials a verified teacher added that wait for approval. */
+  pendingCredentials?: number;
 }
 
 interface ReverifyReport {
@@ -141,6 +143,12 @@ export function QueueTable({ items, status, loading = false }: { items: Item[]; 
                 <td className="px-4 py-4 whitespace-nowrap">
                   <div className="text-sm font-medium text-gray-900">{i.name ?? 'Unnamed'}</div>
                   <div className="text-sm text-gray-500">{i.email}</div>
+                  {/* A zero is never shown. */}
+                  {(i.pendingCredentials ?? 0) > 0 && (
+                    <div className="mt-1 text-xs font-semibold text-amber-700">
+                      {i.pendingCredentials === 1 ? 'New credential waiting for approval' : `${i.pendingCredentials} new credentials waiting for approval`}
+                    </div>
+                  )}
                 </td>
                 <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">{i.identityStatus ? IDENTITY_LABEL[i.identityStatus] ?? i.identityStatus : 'Not checked'}</td>
                 {/* A zero is never shown. */}

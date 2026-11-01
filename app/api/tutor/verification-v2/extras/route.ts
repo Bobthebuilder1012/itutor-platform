@@ -9,7 +9,8 @@ import { validateExtra } from '@/lib/verificationV2/validation';
 import {
   blocked,
   guardV2,
-  hasIdentity,
+  identityStepDone,
+  isVerifiedTeacher,
   isEditable,
   loadExtras,
   loadRow,
@@ -37,8 +38,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const row = await loadRow(db, tutorId);
-    if (!isEditable(row)) return blocked('Your submission is locked while it is reviewed', 409, { code: 'locked' });
-    if (!hasIdentity(row)) return blocked('Complete the identity check first', 409, { code: 'identity_required' });
+    if (!isEditable(row) && !isVerifiedTeacher(row)) return blocked('Your submission is locked while it is reviewed', 409, { code: 'locked' });
+    if (!identityStepDone(row)) return blocked('Complete the identity check first', 409, { code: 'identity_required' });
     if ((await loadCredentials(db, tutorId)).length === 0) {
       return blocked('Add at least one credential first', 409, { code: 'credentials_required' });
     }
@@ -83,7 +84,7 @@ export async function DELETE(request: NextRequest) {
 
   try {
     const row = await loadRow(db, tutorId);
-    if (!isEditable(row)) return blocked('Your submission is locked while it is reviewed', 409, { code: 'locked' });
+    if (!isEditable(row) && !isVerifiedTeacher(row)) return blocked('Your submission is locked while it is reviewed', 409, { code: 'locked' });
 
     const { error } = await db.from('tutor_extras_v2').delete().eq('id', id).eq('tutor_id', tutorId);
     if (error) throw error;

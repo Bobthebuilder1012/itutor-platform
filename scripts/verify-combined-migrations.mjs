@@ -77,6 +77,39 @@ const fail2 = await tryRun(db, apply);
 o = await objects(db);
 ok("a missing is_admin_or_reviewer aborts the apply and leaves nothing behind", !!fail2 && o.tables === 0 && o.guards === 0, JSON.stringify(o) + " " + String(fail2).slice(0, 80));
 
+// 4c. the optional seed: commented out in the file, idempotent once uncommented, test accounts only
+const lines = apply.split('\n');
+const first = lines.indexOf('-- BEGIN;');
+const last = lines.indexOf('-- COMMIT;');
+ok('the seed block is present and commented out', first > 0 && last > first && !/^BEGIN;/m.test(lines.slice(first, last).join('\n')));
+const seedSql = lines.slice(first, last + 1).map((l) => (l.startsWith('-- ') ? l.slice(3) : l === '--' ? '' : l)).join('\n');
+db = await freshDb();
+await db.exec(apply);
+const ids = { inreview: '10000000-0000-0000-0000-000000000001', rejected: '10000000-0000-0000-0000-000000000002', verified: '10000000-0000-0000-0000-000000000003', real: '10000000-0000-0000-0000-000000000009' };
+for (const [k, id] of Object.entries(ids)) {
+  const email = k === 'real' ? 'real.customer@gmail.com' : 'vtest.tutor.' + k + '@example.test';
+  await db.exec("INSERT INTO auth.users (id, email) VALUES ('" + id + "', '" + email + "'); INSERT INTO public.profiles (id, role, email) VALUES ('" + id + "', 'tutor', '" + email + "');");
+}
+const realBefore = (await db.query("SELECT tutor_verification_status s FROM public.profiles WHERE id='" + ids.real + "'")).rows[0].s;
+const seedErr = await tryRun(db, seedSql);
+ok('the seed runs', !seedErr, String(seedErr).slice(0, 200));
+ok('the seed runs again (idempotent)', !(await tryRun(db, seedSql)));
+const rowsOf = async (id) => (await db.query("SELECT status, decision_reason FROM public.tutor_verification_v2 WHERE tutor_id='" + id + "'")).rows;
+const profOf = async (id) => (await db.query("SELECT tutor_verification_status s FROM public.profiles WHERE id='" + id + "'")).rows[0].s;
+const nCred = async (id) => (await db.query("SELECT count(*)::int n FROM public.tutor_credentials_v2 WHERE tutor_id='" + id + "'")).rows[0].n;
+ok('seed: in review', (await rowsOf(ids.inreview))[0]?.status === 'IN_REVIEW' && (await profOf(ids.inreview)) === 'PENDING');
+ok('seed: rejected with a category reason', (await rowsOf(ids.rejected))[0]?.status === 'REJECTED' && (await rowsOf(ids.rejected))[0]?.decision_reason === 'Credentials unclear or incomplete');
+ok('seed: verified with one approved credential', (await rowsOf(ids.verified))[0]?.status === 'VERIFIED' && (await nCred(ids.verified)) === 1 && (await profOf(ids.verified)) === 'VERIFIED');
+ok('seed: exactly three applications, not duplicated by the second run', (await db.query('SELECT count(*)::int n FROM public.tutor_verification_v2')).rows[0].n === 3);
+ok('seed: a real customer row is never touched', (await rowsOf(ids.real)).length === 0 && (await profOf(ids.real)) === realBefore);
+
+// 4d. the apply file ends with a SELECT that lists the six tables
+db = await freshDb();
+const res = await db.exec(apply);
+const finalRows = res[res.length - 1]?.rows ?? [];
+ok('the last statement returns the six verification table names', finalRows.length === 6, JSON.stringify(finalRows));
+ok('the apply file does not name a table outside the verification feature in DML (other than the documented ones)', !/\b(insert\s+into|delete\s+from)\s+public\.(bookings|sessions|payments|tutor_subjects|conversations|messages)\b/i.test(apply));
+
 // 5. the read-only pre-check
 db = await freshDb();
 const stmts = precheck.split(/;\s*\n/).map((s) => s.replace(/^(\s*--.*\n)+/gm, '').trim()).filter(Boolean);

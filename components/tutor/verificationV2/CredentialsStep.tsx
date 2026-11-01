@@ -15,8 +15,10 @@ import { Card, ErrorBanner, PrimaryButton, SecondaryButton, STEP_META, inputClas
 interface Props {
   state: VerificationV2StateDto;
   onChange: () => Promise<void>;
-  onBack: () => void;
-  onNext: () => void;
+  onBack?: () => void;
+  onNext?: () => void;
+  /** The teacher is already verified: new credentials are pending approval and the badge stays. */
+  afterVerified?: boolean;
 }
 
 const INPUT = inputClass;
@@ -28,7 +30,7 @@ function describe(c: CredentialDto): string {
   return `${c.kind} ${c.subject} · Grade ${c.grade} · ${c.examYear}`;
 }
 
-export default function CredentialsStep({ state, onChange, onBack, onNext }: Props) {
+export default function CredentialsStep({ state, onChange, onBack, onNext, afterVerified = false }: Props) {
   const [kind, setKind] = useState<CredentialKind>('CSEC');
   const [subject, setSubject] = useState('');
   const [grade, setGrade] = useState('');
@@ -127,10 +129,16 @@ export default function CredentialsStep({ state, onChange, onBack, onNext }: Pro
   }
 
   return (
-    <Card title={STEP_META[3].title} subtitle={STEP_META[3].subtitle} state={state.credentials.length > 0 ? 'complete' : 'incomplete'}>
-      <p className="mb-5 text-sm text-muted-foreground">
-        Add at least one. These are shown to students and parents once you are verified.
-      </p>
+    <Card
+      title={afterVerified ? 'Add a credential' : STEP_META[3].title}
+      subtitle={afterVerified ? 'New credentials are checked before they show to students and parents. Your Verified badge stays.' : STEP_META[3].subtitle}
+      state={afterVerified ? undefined : state.credentials.length > 0 ? 'complete' : 'incomplete'}
+    >
+      {!afterVerified && (
+        <p className="mb-5 text-sm text-muted-foreground">
+          Add at least one. These are shown to students and parents, with your proof, once an admin has approved them.
+        </p>
+      )}
 
       {state.credentials.length > 0 && (
         <ul className="mb-6 divide-y divide-border rounded-xl border border-border">
@@ -140,9 +148,10 @@ export default function CredentialsStep({ state, onChange, onBack, onNext }: Pro
                 <p className="font-medium">{describe(c)}</p>
                 <p className="text-xs text-muted-foreground">
                   {c.hasProofFile ? `Proof file: ${c.proofFilename ?? 'uploaded'}` : 'Proof link added'}
+                  {c.pending ? ' · Pending approval' : ''}
                 </p>
               </div>
-              {state.editable && (
+              {state.editable && (!afterVerified || c.pending) && (
                 <button onClick={() => remove(c.id)} className="text-xs font-semibold text-red-600 hover:underline">
                   Remove
                 </button>
@@ -212,12 +221,14 @@ export default function CredentialsStep({ state, onChange, onBack, onNext }: Pro
 
       {!state.editable && <ErrorBanner message={error} />}
 
-      <div className="mt-6 flex gap-3">
-        <SecondaryButton onClick={onBack}>Back</SecondaryButton>
-        <PrimaryButton onClick={onNext} disabled={state.credentials.length === 0}>
-          Continue
-        </PrimaryButton>
-      </div>
+      {!afterVerified && onBack && onNext && (
+        <div className="mt-6 flex gap-3">
+          <SecondaryButton onClick={onBack}>Back</SecondaryButton>
+          <PrimaryButton onClick={onNext} disabled={state.credentials.length === 0}>
+            Continue
+          </PrimaryButton>
+        </div>
+      )}
     </Card>
   );
 }

@@ -38,6 +38,7 @@ export interface PublicExtra {
 }
 
 export interface PublicDetail extends PublicSummary {
+  tutorId: string;
   verifiedAt: string | null;
   credentials: PublicCredential[];
   extras: PublicExtra[];
@@ -97,6 +98,7 @@ export async function loadPublicDetail(db: Db, tutorId: string): Promise<PublicD
       .from('tutor_credentials_v2')
       .select('kind, subject, grade, exam_year, school, degree, field, graduation_year')
       .eq('tutor_id', tutorId)
+      .eq('pending_approval', false)
       .order('created_at', { ascending: true }),
     db
       .from('tutor_extras_v2')
@@ -108,6 +110,7 @@ export async function loadPublicDetail(db: Db, tutorId: string): Promise<PublicD
   if (creds.error || extras.error) throw new Error('detail lookup failed');
 
   return {
+    tutorId,
     idChecked: row.identity_status === 'verified',
     credentialsReviewed: true,
     hasExtras: (extras.data ?? []).length > 0,

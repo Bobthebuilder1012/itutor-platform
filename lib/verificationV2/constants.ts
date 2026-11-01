@@ -30,7 +30,7 @@ export type CredentialKind = 'CSEC' | 'CAPE' | 'DEGREE';
 export const CONSENT_VERSION = '2026-10-v1';
 
 /** Client-safe: the screens and the routes both use these. */
-export const SETUP_MESSAGE = 'Verification setup is not finished on this environment.';
+export const SETUP_MESSAGE = 'Verification setup is not finished yet.';
 export const SETUP_CODE = 'setup_not_finished';
 
 export const MAX_IDENTITY_ATTEMPTS = 3;
@@ -60,6 +60,8 @@ export interface CredentialDto {
   proofUrl: string | null;
   proofFilename: string | null;
   hasProofFile: boolean;
+  /** Added after verification and not yet approved by an admin. Not public. */
+  pending: boolean;
 }
 
 export interface ExtraDto {
@@ -96,6 +98,8 @@ export interface VerificationV2StateDto {
   reference: string | null;
   /** Locked once in review, verified or revoked. */
   editable: boolean;
+  /** A verified teacher may add credentials (pending approval) and edit their extras. */
+  canAddCredentials: boolean;
   /** Furthest step the teacher may be on, computed from saved data. 1..4 */
   step: 1 | 2 | 3 | 4;
   credentials: CredentialDto[];

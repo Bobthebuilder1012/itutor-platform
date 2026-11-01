@@ -60,6 +60,14 @@ BEGIN
      AND (TG_OP = 'INSERT' OR NEW.proof_deleted_at IS DISTINCT FROM OLD.proof_deleted_at) THEN
     RAISE EXCEPTION 'proof_deleted_at is set by the server only' USING ERRCODE = '42501';
   END IF;
+  -- Approval is an admin decision. A teacher can never clear pending_approval, and a credential
+  -- added by a VERIFIED teacher always starts pending.
+  IF TG_OP = 'UPDATE' AND NEW.pending_approval IS DISTINCT FROM OLD.pending_approval THEN
+    RAISE EXCEPTION 'pending_approval is set by the server only' USING ERRCODE = '42501';
+  END IF;
+  IF TG_OP = 'INSERT' AND NOT NEW.pending_approval AND public.tutor_v2_is_verified(NEW.tutor_id) THEN
+    RAISE EXCEPTION 'a credential added after verification starts pending' USING ERRCODE = '42501';
+  END IF;
   RETURN NEW;
 END;
 $$;

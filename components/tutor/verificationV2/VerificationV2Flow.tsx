@@ -167,13 +167,23 @@ export default function VerificationV2Flow() {
       {error && <ErrorBanner message={error} />}
 
       {!showWizard ? (
-        <StatusView
-          state={state}
-          onBegin={() => {
-            setStep(state.step);
-            setWorking(true);
-          }}
-        />
+        <>
+          <StatusView
+            state={state}
+            onBegin={() => {
+              setStep(state.step);
+              setWorking(true);
+            }}
+          />
+          {/* A verified teacher can keep their profile up to date. New credentials wait for an admin;
+              the Verified badge stays. */}
+          {state.status === 'VERIFIED' && state.canAddCredentials && (
+            <>
+              <CredentialsStep state={{ ...state, editable: true }} onChange={load} afterVerified />
+              <ExtrasStep state={{ ...state, editable: true }} onChange={load} afterVerified />
+            </>
+          )}
+        </>
       ) : (
         <>
           <ProgressCard

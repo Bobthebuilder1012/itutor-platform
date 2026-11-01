@@ -9,7 +9,8 @@ import { isOwnProofPath, validateCredential } from '@/lib/verificationV2/validat
 import {
   blocked,
   guardV2,
-  hasIdentity,
+  identityStepDone,
+  isVerifiedTeacher,
   isEditable,
   loadCredentials,
   loadRow,
@@ -35,8 +36,10 @@ export async function POST(request: NextRequest) {
 
   try {
     const row = await loadRow(db, tutorId);
-    if (!isEditable(row)) return blocked('Your submission is locked while it is reviewed', 409, { code: 'locked' });
-    if (!hasIdentity(row)) return blocked('Complete the identity check first', 409, { code: 'identity_required' });
+    // A verified teacher may add credentials: they start pending approval and the badge stays.
+    const verified = isVerifiedTeacher(row);
+    if (!isEditable(row) && !verified) return blocked('Your submission is locked while it is reviewed', 409, { code: 'locked' });
+    if (!identityStepDone(row)) return blocked('Complete the identity check first', 409, { code: 'identity_required' });
 
     const existing = await loadCredentials(db, tutorId);
     if (existing.length >= MAX_CREDENTIALS) {
@@ -83,6 +86,7 @@ export async function POST(request: NextRequest) {
         proof_url: input.proof_url,
         proof_path: input.proofPath,
         proof_filename: input.proof_filename,
+        pending_approval: verified,
       })
       .select('id')
       .single();
@@ -112,15 +116,20 @@ export async function DELETE(request: NextRequest) {
 
   try {
     const row = await loadRow(db, tutorId);
-    if (!isEditable(row)) return blocked('Your submission is locked while it is reviewed', 409, { code: 'locked' });
+    const verified = isVerifiedTeacher(row);
+    if (!isEditable(row) && !verified) return blocked('Your submission is locked while it is reviewed', 409, { code: 'locked' });
 
     const { data: cred } = await db
       .from('tutor_credentials_v2')
-      .select('id, proof_path')
+      .select('id, proof_path, pending_approval')
       .eq('id', id)
       .eq('tutor_id', tutorId)
       .maybeSingle();
     if (!cred) return blocked('Not found', 404);
+    // After verification a teacher can take back a pending credential, never an approved one.
+    if (verified && !cred.pending_approval) {
+      return blocked('An approved credential cannot be removed here. Contact support.', 409, { code: 'approved_locked' });
+    }
 
     const { error } = await db.from('tutor_credentials_v2').delete().eq('id', id).eq('tutor_id', tutorId);
     if (error) throw error;

@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
 import { PROOF_BUCKET } from '@/lib/verificationV2/constants';
 import { validateUploadRequest } from '@/lib/verificationV2/validation';
-import { blocked, guardV2, hasIdentity, isEditable, loadRow } from '@/lib/verificationV2/server';
+import { blocked, guardV2, identityStepDone, isEditable, isVerifiedTeacher, loadRow } from '@/lib/verificationV2/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,8 +29,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const row = await loadRow(g.db, g.tutorId);
-    if (!isEditable(row)) return blocked('Your submission is locked while it is reviewed', 409, { code: 'locked' });
-    if (!hasIdentity(row)) return blocked('Complete the identity check first', 409, { code: 'identity_required' });
+    if (!isEditable(row) && !isVerifiedTeacher(row)) return blocked('Your submission is locked while it is reviewed', 409, { code: 'locked' });
+    if (!identityStepDone(row)) return blocked('Complete the identity check first', 409, { code: 'identity_required' });
 
     const path = `${g.tutorId}/${randomUUID()}.${check.value.ext}`;
     const { data, error } = await g.db.storage.from(PROOF_BUCKET).createSignedUploadUrl(path);

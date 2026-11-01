@@ -98,10 +98,21 @@ function diditMinorAge(decision: any, minimumAge: number): boolean {
   return false;
 }
 
+/** The name Didit read from the document, or null. Used for the profile-name comparison only. */
+function diditDocumentName(decision: any): string | null {
+  const v = decision?.id_verifications?.[0];
+  if (!v) return null;
+  const full = typeof v.full_name === 'string' ? v.full_name.trim() : '';
+  if (full) return full;
+  const joined = [v.first_name, v.last_name].filter((x: unknown) => typeof x === 'string' && x).join(' ').trim();
+  return joined || null;
+}
+
 export function mapDiditDecision(decision: any, opts: { minimumAge: number }): ProviderOutcome {
   const withDoc = (o: ProviderOutcome): ProviderOutcome => ({
     ...o,
     documentType: decision?.id_verifications?.[0]?.document_type ?? null,
+    documentName: diditDocumentName(decision),
   });
   return withDoc(mapDiditDecisionCore(decision, opts));
 }

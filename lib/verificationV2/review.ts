@@ -59,7 +59,7 @@ const fail = (
   httpStatus = 409
 ): ReviewFailure => ({ ok: false, code, message, httpStatus });
 
-type AuditAction = 'APPROVE' | 'REJECT' | 'REVOKE' | 'REQUIRE_REVERIFICATION' | 'REQUEST_INFO';
+type AuditAction = 'APPROVE' | 'REJECT' | 'REVOKE' | 'REQUIRE_REVERIFICATION' | 'REQUEST_INFO' | 'APPROVE_CREDENTIAL' | 'REJECT_CREDENTIAL';
 
 /** Appends to the audit table. Returns an error string, or null. */
 export async function recordDecision(
@@ -261,6 +261,86 @@ export async function rejectV2(
     files,
     notification: notified.status,
   };
+}
+
+// ---------------------------------------------------------------
+// a credential added after verification: approve or reject
+// ---------------------------------------------------------------
+/**
+ * A VERIFIED teacher can add credentials; each one is pending until staff decide. Neither
+ * decision touches the teacher's status or badge: approving makes the credential public,
+ * rejecting deletes it (and its proof file). The teacher is told in-app; the audit table
+ * records who decided.
+ */
+async function loadPendingCredential(db: Db, tutorId: string, credentialId: string) {
+  const { data, error } = await db
+    .from('tutor_credentials_v2')
+    .select('id, tutor_id, kind, proof_path, pending_approval')
+    .eq('id', credentialId)
+    .eq('tutor_id', tutorId)
+    .maybeSingle();
+  return { cred: data as { id: string; proof_path: string | null; pending_approval: boolean } | null, error };
+}
+
+export async function approveCredentialV2(ctx: ReviewCtx, tutorId: string, credentialId: string): Promise<ReviewSuccess | ReviewFailure> {
+  const db = ctx.db ?? (getServiceClient() as Db);
+  const { cred, error } = await loadPendingCredential(db, tutorId, credentialId);
+  if (error) return dbFail('Could not read the credential');
+  if (!cred) return notFound('Credential not found');
+  if (!cred.pending_approval) return { ok: false, code: 'transition_not_allowed', message: 'That credential is not waiting for approval.', httpStatus: 409 };
+
+  const { data, error: upErr } = await db
+    .from('tutor_credentials_v2')
+    .update({ pending_approval: false })
+    .eq('id', credentialId)
+    .eq('pending_approval', true)
+    .select('id');
+  if (upErr) return dbFail('Could not approve the credential');
+  if (!data || data.length === 0) return { ok: false, code: 'conflict', message: 'That credential was already decided.', httpStatus: 409 };
+
+  const notified = await notifyTeacher(db, tutorId, { kind: 'credential_approved' }, { stamp: credentialId });
+  const auditError = await recordDecision(db, {
+    tutorId, actor: ctx.actor, actorId: ctx.actorId, action: 'APPROVE_CREDENTIAL', reason: null,
+    from: null, to: null, profileFrom: null, profileTo: null,
+  });
+  if (auditError) console.error(`[verification-v2/review] ${tutorId}: credential approved, audit record failed: ${auditError}`);
+  return { ok: true, from: 'PENDING', to: 'APPROVED', profile: { from: '', to: null, changed: false }, notification: notified.status };
+}
+
+export async function rejectCredentialV2(
+  ctx: ReviewCtx,
+  tutorId: string,
+  credentialId: string,
+  reason: string,
+  note?: string | null
+): Promise<ReviewSuccess | ReviewFailure> {
+  const db = ctx.db ?? (getServiceClient() as Db);
+  const why = (reason ?? '').trim();
+  if (!why) return fail('reason_required', 'Choose a reason.', 400);
+  const { cred, error } = await loadPendingCredential(db, tutorId, credentialId);
+  if (error) return dbFail('Could not read the credential');
+  if (!cred) return notFound('Credential not found');
+  if (!cred.pending_approval) return { ok: false, code: 'transition_not_allowed', message: 'Only a credential waiting for approval can be rejected here.', httpStatus: 409 };
+
+  const { data, error: delErr } = await db
+    .from('tutor_credentials_v2')
+    .delete()
+    .eq('id', credentialId)
+    .eq('pending_approval', true)
+    .select('id');
+  if (delErr) return dbFail('Could not remove the credential');
+  if (!data || data.length === 0) return { ok: false, code: 'conflict', message: 'That credential was already decided.', httpStatus: 409 };
+  if (cred.proof_path) {
+    await db.storage.from('tutor-credential-proofs').remove([cred.proof_path]).catch(() => undefined);
+  }
+
+  const notified = await notifyTeacher(db, tutorId, { kind: 'credential_rejected', reason: why }, { stamp: credentialId });
+  const auditError = await recordDecision(db, {
+    tutorId, actor: ctx.actor, actorId: ctx.actorId, action: 'REJECT_CREDENTIAL', reason: auditReason(why, note),
+    from: null, to: null, profileFrom: null, profileTo: null,
+  });
+  if (auditError) console.error(`[verification-v2/review] ${tutorId}: credential rejected, audit record failed: ${auditError}`);
+  return { ok: true, from: 'PENDING', to: 'REJECTED', profile: { from: '', to: null, changed: false }, notification: notified.status };
 }
 
 // ---------------------------------------------------------------

@@ -11,9 +11,11 @@
 -- If any statement fails the whole transaction rolls back and nothing is changed.
 -- Safe to run twice (CREATE ... IF NOT EXISTS, DROP ... IF EXISTS before CREATE).
 --
--- NOT PURELY ADDITIVE (see docs/staging-handoff.md, "Migration risks"): it also
--- rewrites two CHECK constraints (profiles.tutor_verification_status,
--- notifications_type_check) and adds guard triggers on existing tables.
+-- NOT PURELY ADDITIVE (see docs/staging-handoff.md, "Migration risks"). The ONLY existing
+-- (non-verification) objects it changes are: the CHECK on profiles.tutor_verification_status,
+-- the CHECK notifications_type_check, a unique index and (if missing) a column on notifications,
+-- and guard triggers on profiles, tutor_verification_requests and tutor_verified_subjects. It
+-- reads and writes no rows in any other table. It ends with a SELECT listing the six tables.
 -- =====================================================================
 
 
@@ -144,6 +146,10 @@ CREATE TABLE IF NOT EXISTS public.tutor_credentials_v2 (
   proof_path text,
   proof_filename text CHECK (proof_filename IS NULL OR char_length(proof_filename) <= 100),
 
+  -- A credential a VERIFIED teacher adds later is pending until an admin approves it. It is
+  -- visible to the teacher and admins only; the Verified badge is unaffected either way.
+  pending_approval boolean NOT NULL DEFAULT false,
+
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
 
@@ -162,8 +168,14 @@ CREATE TABLE IF NOT EXISTS public.tutor_credentials_v2 (
   )
 );
 
+-- A database that already had the table (re-run) gets the column too.
+ALTER TABLE public.tutor_credentials_v2 ADD COLUMN IF NOT EXISTS pending_approval boolean NOT NULL DEFAULT false;
+
 CREATE INDEX IF NOT EXISTS idx_tutor_credentials_v2_tutor
   ON public.tutor_credentials_v2 (tutor_id);
+
+CREATE INDEX IF NOT EXISTS idx_tutor_credentials_v2_pending
+  ON public.tutor_credentials_v2 (tutor_id) WHERE pending_approval;
 
 -- ---------------------------------------------------
 -- 4. Extras (optional, at most 3 per teacher)
@@ -351,31 +363,45 @@ CREATE POLICY "v2 tutor reads own credentials"
 DROP POLICY IF EXISTS "v2 tutor inserts own credentials" ON public.tutor_credentials_v2;
 CREATE POLICY "v2 tutor inserts own credentials"
   ON public.tutor_credentials_v2 FOR INSERT TO authenticated
-  WITH CHECK (tutor_id = auth.uid() AND public.tutor_v2_is_editable(tutor_id));
+  WITH CHECK (
+    tutor_id = auth.uid()
+    AND (public.tutor_v2_is_editable(tutor_id) OR (public.tutor_v2_is_verified(tutor_id) AND pending_approval))
+  );
 
 DROP POLICY IF EXISTS "v2 tutor updates own credentials" ON public.tutor_credentials_v2;
 CREATE POLICY "v2 tutor updates own credentials"
   ON public.tutor_credentials_v2 FOR UPDATE TO authenticated
-  USING (tutor_id = auth.uid() AND public.tutor_v2_is_editable(tutor_id))
-  WITH CHECK (tutor_id = auth.uid() AND public.tutor_v2_is_editable(tutor_id));
+  USING (
+    tutor_id = auth.uid()
+    AND (public.tutor_v2_is_editable(tutor_id) OR (public.tutor_v2_is_verified(tutor_id) AND pending_approval))
+  )
+  WITH CHECK (
+    tutor_id = auth.uid()
+    AND (public.tutor_v2_is_editable(tutor_id) OR (public.tutor_v2_is_verified(tutor_id) AND pending_approval))
+  );
 
 DROP POLICY IF EXISTS "v2 tutor deletes own credentials" ON public.tutor_credentials_v2;
 CREATE POLICY "v2 tutor deletes own credentials"
   ON public.tutor_credentials_v2 FOR DELETE TO authenticated
-  USING (tutor_id = auth.uid() AND public.tutor_v2_is_editable(tutor_id));
+  USING (
+    tutor_id = auth.uid()
+    AND (public.tutor_v2_is_editable(tutor_id) OR (public.tutor_v2_is_verified(tutor_id) AND pending_approval))
+  );
 
 DROP POLICY IF EXISTS "v2 admins read all credentials" ON public.tutor_credentials_v2;
 CREATE POLICY "v2 admins read all credentials"
   ON public.tutor_credentials_v2 FOR SELECT TO authenticated
   USING (public.is_admin_or_reviewer(auth.uid()));
 
--- Students and parents see credentials of VERIFIED teachers only.
+-- Students and parents see APPROVED credentials of VERIFIED teachers only. A pending one is
+-- invisible to them.
 DROP POLICY IF EXISTS "v2 students parents read verified credentials" ON public.tutor_credentials_v2;
 CREATE POLICY "v2 students parents read verified credentials"
   ON public.tutor_credentials_v2 FOR SELECT TO authenticated
   USING (
     public.tutor_v2_viewer_is_student_or_parent()
     AND public.tutor_v2_is_verified(tutor_id)
+    AND NOT pending_approval
   );
 
 -- tutor_extras_v2
@@ -387,18 +413,18 @@ CREATE POLICY "v2 tutor reads own extras"
 DROP POLICY IF EXISTS "v2 tutor inserts own extras" ON public.tutor_extras_v2;
 CREATE POLICY "v2 tutor inserts own extras"
   ON public.tutor_extras_v2 FOR INSERT TO authenticated
-  WITH CHECK (tutor_id = auth.uid() AND public.tutor_v2_is_editable(tutor_id));
+  WITH CHECK (tutor_id = auth.uid() AND (public.tutor_v2_is_editable(tutor_id) OR public.tutor_v2_is_verified(tutor_id)));
 
 DROP POLICY IF EXISTS "v2 tutor updates own extras" ON public.tutor_extras_v2;
 CREATE POLICY "v2 tutor updates own extras"
   ON public.tutor_extras_v2 FOR UPDATE TO authenticated
-  USING (tutor_id = auth.uid() AND public.tutor_v2_is_editable(tutor_id))
-  WITH CHECK (tutor_id = auth.uid() AND public.tutor_v2_is_editable(tutor_id));
+  USING (tutor_id = auth.uid() AND (public.tutor_v2_is_editable(tutor_id) OR public.tutor_v2_is_verified(tutor_id)))
+  WITH CHECK (tutor_id = auth.uid() AND (public.tutor_v2_is_editable(tutor_id) OR public.tutor_v2_is_verified(tutor_id)));
 
 DROP POLICY IF EXISTS "v2 tutor deletes own extras" ON public.tutor_extras_v2;
 CREATE POLICY "v2 tutor deletes own extras"
   ON public.tutor_extras_v2 FOR DELETE TO authenticated
-  USING (tutor_id = auth.uid() AND public.tutor_v2_is_editable(tutor_id));
+  USING (tutor_id = auth.uid() AND (public.tutor_v2_is_editable(tutor_id) OR public.tutor_v2_is_verified(tutor_id)));
 
 DROP POLICY IF EXISTS "v2 admins read all extras" ON public.tutor_extras_v2;
 CREATE POLICY "v2 admins read all extras"
@@ -831,7 +857,7 @@ CREATE TABLE IF NOT EXISTS public.tutor_verification_v2_decisions (
   actor_id uuid,
   actor_role text NOT NULL CHECK (actor_role IN ('admin', 'reviewer', 'system')),
   action text NOT NULL
-    CHECK (action IN ('APPROVE', 'REJECT', 'REVOKE', 'REQUIRE_REVERIFICATION', 'REQUEST_INFO')),
+    CHECK (action IN ('APPROVE', 'REJECT', 'REVOKE', 'REQUIRE_REVERIFICATION', 'REQUEST_INFO', 'APPROVE_CREDENTIAL', 'REJECT_CREDENTIAL')),
   from_status text,
   to_status text,
   -- What the same decision did to profiles.tutor_verification_status.
@@ -937,6 +963,14 @@ BEGIN
      AND (TG_OP = 'INSERT' OR NEW.proof_deleted_at IS DISTINCT FROM OLD.proof_deleted_at) THEN
     RAISE EXCEPTION 'proof_deleted_at is set by the server only' USING ERRCODE = '42501';
   END IF;
+  -- Approval is an admin decision. A teacher can never clear pending_approval, and a credential
+  -- added by a VERIFIED teacher always starts pending.
+  IF TG_OP = 'UPDATE' AND NEW.pending_approval IS DISTINCT FROM OLD.pending_approval THEN
+    RAISE EXCEPTION 'pending_approval is set by the server only' USING ERRCODE = '42501';
+  END IF;
+  IF TG_OP = 'INSERT' AND NOT NEW.pending_approval AND public.tutor_v2_is_verified(NEW.tutor_id) THEN
+    RAISE EXCEPTION 'a credential added after verification starts pending' USING ERRCODE = '42501';
+  END IF;
   RETURN NEW;
 END;
 $$;
@@ -985,7 +1019,10 @@ ALTER TABLE public.tutor_verification_v2
   ADD COLUMN IF NOT EXISTS identity_session_refs jsonb NOT NULL DEFAULT '[]'::jsonb,
   ADD COLUMN IF NOT EXISTS identity_providers_tried text[] NOT NULL DEFAULT '{}',
   ADD COLUMN IF NOT EXISTS identity_country text,
-  ADD COLUMN IF NOT EXISTS identity_provider_code text;
+  ADD COLUMN IF NOT EXISTS identity_provider_code text,
+  -- Whether the name on the verified document matches the teacher's profile name. A yes or no
+  -- only: the document name itself is never stored. Shown to admins.
+  ADD COLUMN IF NOT EXISTS identity_name_match boolean;
 
 ALTER TABLE public.tutor_verification_v2 DROP CONSTRAINT IF EXISTS tutor_verification_v2_identity_provider_check;
 ALTER TABLE public.tutor_verification_v2
@@ -1140,3 +1177,74 @@ CREATE POLICY "identity outcomes admins read"
   USING (public.is_admin_or_reviewer(auth.uid()));
 
 COMMIT;
+
+-- =====================================================================
+-- OPTIONAL (staging only, commented out): test data without Didit
+-- =====================================================================
+-- Seeds three EXISTING test teachers: one in review, one rejected (with a category
+-- reason) and one verified (with one approved credential). It only touches accounts that
+-- are already in profiles with these exact addresses, so create them first as ordinary
+-- tutor sign-ups:
+--   vtest.tutor.inreview@example.test
+--   vtest.tutor.rejected@example.test
+--   vtest.tutor.verified@example.test
+-- It never adds a profile and never matches a real customer. It is safe to run again.
+-- To use it, remove the leading "-- " from the block below and run it on its own.
+-- =====================================================================
+-- BEGIN;
+--
+-- CREATE TEMP TABLE _vseed ON COMMIT DROP AS
+--   SELECT id, email FROM public.profiles
+--   WHERE role = 'tutor'
+--     AND email IN ('vtest.tutor.inreview@example.test', 'vtest.tutor.rejected@example.test', 'vtest.tutor.verified@example.test');
+--
+-- -- Start from a clean slate for these three accounts only, so the block can run again. (The
+-- -- decision audit table is append-only by design, so its rows are added once, below, never deleted.)
+-- DELETE FROM public.tutor_credentials_v2 WHERE tutor_id IN (SELECT id FROM _vseed);
+-- DELETE FROM public.tutor_verification_v2 WHERE tutor_id IN (SELECT id FROM _vseed);
+--
+-- -- 1. In review: shows under "Needs review" in /admin/verification-v2.
+-- INSERT INTO public.tutor_verification_v2
+--   (tutor_id, status, consent_at, consent_version, identity_status, identity_provider, identity_provider_session_ref, identity_attempts, identity_verified_at, identity_country, identity_name_match, submitted_at)
+-- SELECT id, 'IN_REVIEW', now(), '2026-10-v1', 'verified', 'didit', 'seed-' || id::text, 1, now(), 'TT', true, now()
+-- FROM _vseed WHERE email = 'vtest.tutor.inreview@example.test';
+-- INSERT INTO public.tutor_credentials_v2 (tutor_id, kind, subject, grade, exam_year, proof_url)
+-- SELECT id, 'CSEC', 'Mathematics', 'I', 2019, 'https://example.com/seed-proof' FROM _vseed WHERE email = 'vtest.tutor.inreview@example.test';
+-- UPDATE public.profiles SET tutor_verification_status = 'PENDING' WHERE id IN (SELECT id FROM _vseed WHERE email = 'vtest.tutor.inreview@example.test');
+--
+-- -- 2. Rejected with a category reason: shows under "Waiting on teacher".
+-- INSERT INTO public.tutor_verification_v2
+--   (tutor_id, status, consent_at, consent_version, identity_status, identity_provider, identity_provider_session_ref, identity_attempts, identity_verified_at, identity_country, identity_name_match, submitted_at, decision_reason, decided_at)
+-- SELECT id, 'REJECTED', now(), '2026-10-v1', 'verified', 'didit', 'seed-' || id::text, 1, now(), 'TT', true, now() - interval '2 days', 'Credentials unclear or incomplete', now() - interval '1 day'
+-- FROM _vseed WHERE email = 'vtest.tutor.rejected@example.test';
+-- INSERT INTO public.tutor_credentials_v2 (tutor_id, kind, subject, grade, exam_year, proof_url)
+-- SELECT id, 'CSEC', 'English A', 'II', 2018, 'https://example.com/seed-proof' FROM _vseed WHERE email = 'vtest.tutor.rejected@example.test';
+-- INSERT INTO public.tutor_verification_v2_decisions (tutor_id, actor_role, action, from_status, to_status, profile_from_status, profile_to_status, reason)
+-- SELECT id, 'system', 'REJECT', 'IN_REVIEW', 'REJECTED', 'PENDING', 'REJECTED', 'Credentials unclear or incomplete' FROM _vseed
+-- WHERE email = 'vtest.tutor.rejected@example.test'
+--   AND NOT EXISTS (SELECT 1 FROM public.tutor_verification_v2_decisions d WHERE d.tutor_id = _vseed.id AND d.action = 'REJECT');
+-- UPDATE public.profiles SET tutor_verification_status = 'REJECTED' WHERE id IN (SELECT id FROM _vseed WHERE email = 'vtest.tutor.rejected@example.test');
+--
+-- -- 3. Verified with one approved credential: shows the Verified badge and a details page.
+-- INSERT INTO public.tutor_verification_v2
+--   (tutor_id, status, consent_at, consent_version, identity_status, identity_provider, identity_provider_session_ref, identity_attempts, identity_verified_at, identity_country, identity_name_match, submitted_at, decided_at)
+-- SELECT id, 'VERIFIED', now(), '2026-10-v1', 'verified', 'didit', 'seed-' || id::text, 1, now(), 'TT', true, now() - interval '3 days', now() - interval '1 day'
+-- FROM _vseed WHERE email = 'vtest.tutor.verified@example.test';
+-- INSERT INTO public.tutor_credentials_v2 (tutor_id, kind, subject, grade, exam_year, proof_url, pending_approval)
+-- SELECT id, 'CSEC', 'Physics', 'I', 2017, 'https://example.com/seed-proof', false FROM _vseed WHERE email = 'vtest.tutor.verified@example.test';
+-- INSERT INTO public.tutor_verification_v2_decisions (tutor_id, actor_role, action, from_status, to_status, profile_from_status, profile_to_status)
+-- SELECT id, 'system', 'APPROVE', 'IN_REVIEW', 'VERIFIED', 'PENDING', 'VERIFIED' FROM _vseed
+-- WHERE email = 'vtest.tutor.verified@example.test'
+--   AND NOT EXISTS (SELECT 1 FROM public.tutor_verification_v2_decisions d WHERE d.tutor_id = _vseed.id AND d.action = 'APPROVE');
+-- UPDATE public.profiles SET tutor_verification_status = 'VERIFIED', tutor_verified_at = now() WHERE id IN (SELECT id FROM _vseed WHERE email = 'vtest.tutor.verified@example.test');
+--
+-- COMMIT;
+
+-- =====================================================================
+-- RESULT: should list the six verification tables. Fewer rows means the run did not finish.
+-- =====================================================================
+SELECT table_name FROM information_schema.tables
+WHERE table_schema = 'public'
+  AND table_name IN ('tutor_verification_v2', 'tutor_credentials_v2', 'tutor_extras_v2',
+                     'tutor_verification_v2_decisions', 'identity_webhook_events', 'identity_outcomes')
+ORDER BY table_name;

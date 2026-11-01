@@ -193,6 +193,44 @@ await asRole('authenticated', ADM, async () => {
   await db.exec(`SET LOCAL x.y = 1`).catch(() => {});
 });
 
+// ---------- a VERIFIED teacher adding credentials: pending until an admin approves ----------
+const PROOF = "'https://example.com/p'";
+await asRole('authenticated', T, async () => {
+  const added = await run(`INSERT INTO public.tutor_credentials_v2 (tutor_id,kind,subject,grade,exam_year,proof_url,pending_approval) VALUES ('${T}','CSEC','Biology','I',2021,${PROOF},true)`, 'verified add');
+  ok('270 a VERIFIED teacher can add a credential as pending', !added, added ?? '');
+  await expectError(`INSERT INTO public.tutor_credentials_v2 (tutor_id,kind,subject,grade,exam_year,proof_url) VALUES ('${T}','CSEC','Art','I',2021,${PROOF})`, /policy|starts pending|42501/i, '270 a VERIFIED teacher cannot add an already-approved credential');
+  await expectError(`UPDATE public.tutor_credentials_v2 SET pending_approval=false WHERE tutor_id='${T}' AND subject='Biology'`, /server only|policy|42501/i, '273 a teacher cannot approve their own credential');
+  const touch = await q(`UPDATE public.tutor_credentials_v2 SET subject='Hacked' WHERE tutor_id='${T}' AND NOT pending_approval RETURNING id`);
+  ok('270 a VERIFIED teacher cannot edit an APPROVED credential', touch.length === 0, JSON.stringify(touch));
+  const gone = await q(`DELETE FROM public.tutor_credentials_v2 WHERE tutor_id='${T}' AND NOT pending_approval RETURNING id`);
+  ok('270 a VERIFIED teacher cannot delete an APPROVED credential', gone.length === 0, JSON.stringify(gone));
+  const mine = await q(`SELECT id FROM public.tutor_credentials_v2 WHERE tutor_id='${T}'`);
+  ok('270 the teacher sees both their approved and their pending credential', mine.length === 2, JSON.stringify(mine));
+  const extra = await run(`INSERT INTO public.tutor_extras_v2 (tutor_id,title,description) VALUES ('${T}','later','added after verification')`, 'verified extra');
+  ok('270 a VERIFIED teacher can add an extra', !extra, extra ?? '');
+});
+await asRole('authenticated', STU, async () => {
+  const seen = await q(`SELECT subject FROM public.tutor_credentials_v2`);
+  ok('270 a student sees the APPROVED credential only, never the pending one', seen.length === 1 && seen[0].subject !== 'Biology', JSON.stringify(seen));
+});
+await asRole('authenticated', ADM, async () => {
+  const all = await q(`SELECT id FROM public.tutor_credentials_v2 WHERE tutor_id='${T}'`);
+  ok('270 an admin sees every credential, pending included', all.length === 2, JSON.stringify(all));
+});
+{
+  const approved = await q(`UPDATE public.tutor_credentials_v2 SET pending_approval=false WHERE tutor_id='${T}' AND subject='Biology' RETURNING id`);
+  ok('273 the server can approve a pending credential', approved.length === 1);
+}
+await asRole('authenticated', STU, async () => {
+  const seen = await q(`SELECT subject FROM public.tutor_credentials_v2`);
+  ok('270 once approved, the student sees it too', seen.length === 2, JSON.stringify(seen));
+});
+await asRole('authenticated', T, async () => {
+  await run(`INSERT INTO public.tutor_credentials_v2 (tutor_id,kind,subject,grade,exam_year,proof_url,pending_approval) VALUES ('${T}','CSEC','Chemistry','I',2021,${PROOF},true)`, 'again');
+  const own = await q(`DELETE FROM public.tutor_credentials_v2 WHERE tutor_id='${T}' AND subject='Chemistry' RETURNING id`);
+  ok('270 a VERIFIED teacher can take back their own pending credential', own.length === 1, JSON.stringify(own));
+});
+
 // ---------- 271: guards ----------
 await asRole('authenticated', T, async () => {
   await expectError(`UPDATE public.profiles SET is_reviewer = true WHERE id='${T}'`, /not user-writable/, '271 a user cannot make themselves a reviewer');

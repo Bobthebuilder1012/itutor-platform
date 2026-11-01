@@ -40,6 +40,8 @@ export type NoticeKind =
   | 'verified'
   | 'rejected'
   | 'more_info'
+  | 'credential_approved'
+  | 'credential_rejected'
   | 'revoked'
   | 'reverification_required'
   | 'identity_failed';
@@ -49,6 +51,8 @@ export type TeacherNotice =
   | { kind: 'verified' }
   | { kind: 'rejected'; reason: string | null }
   | { kind: 'more_info'; reason: string | null }
+  | { kind: 'credential_approved' }
+  | { kind: 'credential_rejected'; reason: string | null }
   | { kind: 'revoked'; reason: string | null }
   | { kind: 'reverification_required' }
   | { kind: 'identity_failed'; status: 'retryable_failure' | 'not_supported' | 'consent_declined'; reason: string | null };
@@ -89,6 +93,20 @@ export function buildNotice(
         message: notice.reason
           ? `Reason: ${clip(notice.reason)} You can edit your application and submit it again.`
           : 'You can edit your application and submit it again.',
+      };
+    case 'credential_approved':
+      return {
+        type: 'VERIFICATION_APPROVED',
+        title: 'A new credential was approved',
+        message: 'It now shows on your Verification details page. Your Verified badge is unchanged.',
+      };
+    case 'credential_rejected':
+      return {
+        type: 'VERIFICATION_REJECTED',
+        title: 'A new credential was not approved',
+        message: notice.reason
+          ? `Reason: ${clip(notice.reason)} Your Verified badge is unchanged. You can add it again with a clearer proof.`
+          : 'Your Verified badge is unchanged. You can add it again with a clearer proof.',
       };
     case 'more_info':
       return {

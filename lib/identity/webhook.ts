@@ -13,6 +13,7 @@ import { getServiceClient } from '@/lib/supabase/server';
 import { isVerificationV2Enabled } from '@/lib/featureFlags/verificationV2';
 import { isRuleRefusal, setIdentityStatus, type Db } from '@/lib/verification/setStatus';
 import { notifyIdentityOutcome } from '@/lib/verificationV2/notify';
+import { nameMatchExtra } from './nameMatch';
 import { outcomeToStored } from './mapping';
 import { getProvider } from './registry';
 import {
@@ -95,6 +96,7 @@ export async function applyProviderOutcome(
     actor: 'system',
     sessionRef: ev.sessionRef,
     provider,
+    extra: await nameMatchExtra(db, tutorId, result.documentName),
     db,
   });
 

@@ -17,12 +17,13 @@ export const dynamic = 'force-dynamic';
 const STATUSES = ['IN_PROGRESS', 'IN_REVIEW', 'VERIFIED', 'REJECTED', 'REVOKED', 'REVERIFICATION_REQUIRED'];
 
 type Row = { status: string; decision_reason?: string | null };
-const TABS: Record<string, (r: Row) => boolean> = {
-  review: (r) => r.status === 'IN_REVIEW',
+// `pending` = how many credentials this teacher added after verification that await approval.
+const TABS: Record<string, (r: Row, pending: number) => boolean> = {
+  review: (r, pending) => r.status === 'IN_REVIEW' || (r.status === 'VERIFIED' && pending > 0),
   // A teacher who is merely part-way through the form is not "waiting": they were not asked for anything.
   waiting: (r) =>
     r.status === 'REJECTED' || r.status === 'REVERIFICATION_REQUIRED' || (r.status === 'IN_PROGRESS' && !!r.decision_reason),
-  done: (r) => r.status === 'VERIFIED' || r.status === 'REVOKED',
+  done: (r, pending) => (r.status === 'VERIFIED' && pending === 0) || r.status === 'REVOKED',
 };
 
 export async function GET(request: NextRequest) {
@@ -40,6 +41,7 @@ export async function GET(request: NextRequest) {
   let rows: any[] | null;
   let error: any;
   let counts: Record<string, number> | undefined;
+  let pendingByTutor: Record<string, number> = {};
   if (tab) {
     const all = await g.db
       .from('tutor_verification_v2')
@@ -49,8 +51,12 @@ export async function GET(request: NextRequest) {
       .limit(1000);
     error = all.error;
     const list: any[] = all.data ?? [];
-    counts = Object.fromEntries(Object.entries(TABS).map(([k, test]) => [k, list.filter(test).length]));
-    rows = list.filter(TABS[tab]).slice(0, 100);
+    const pend = await g.db.from('tutor_credentials_v2').select('tutor_id').eq('pending_approval', true);
+    pendingByTutor = {};
+    for (const p of pend.data ?? []) pendingByTutor[p.tutor_id] = (pendingByTutor[p.tutor_id] ?? 0) + 1;
+    const pendingOf = (r: any) => pendingByTutor[r.tutor_id] ?? 0;
+    counts = Object.fromEntries(Object.entries(TABS).map(([k, test]) => [k, list.filter((r) => test(r, pendingOf(r))).length]));
+    rows = list.filter((r) => TABS[tab](r, pendingOf(r))).slice(0, 100);
   } else {
     const one = await g.db
       .from('tutor_verification_v2')
@@ -98,6 +104,7 @@ export async function GET(request: NextRequest) {
       decidedAt: r.decided_at,
       credentialCount: credCount[r.tutor_id] ?? 0,
       extraCount: extraCount[r.tutor_id] ?? 0,
+      pendingCredentials: pendingByTutor[r.tutor_id] ?? 0,
     })),
   });
 }

@@ -31,7 +31,7 @@ function seed() {
     ],
     tutor_credentials_v2: [
       { tutor_id: 'ok', kind: 'CSEC', subject: 'Maths', grade: 'I', exam_year: 2020, school: null, degree: null, field: null,
-        graduation_year: null, proof_path: 'ok/SECRET.pdf', proof_url: 'https://secret-proof.example', proof_filename: 'secret.pdf', created_at: '1' },
+        graduation_year: null, proof_path: 'ok/SECRET.pdf', proof_url: 'https://secret-proof.example', proof_filename: 'secret.pdf', pending_approval: false, created_at: '1' },
       { tutor_id: 'review', kind: 'CSEC', subject: 'Hidden', grade: 'I', exam_year: 2020, created_at: '1' },
     ],
     tutor_extras_v2: [

@@ -96,7 +96,7 @@ CREATE TABLE IF NOT EXISTS public.tutor_verification_v2_decisions (
   actor_id uuid,
   actor_role text NOT NULL CHECK (actor_role IN ('admin', 'reviewer', 'system')),
   action text NOT NULL
-    CHECK (action IN ('APPROVE', 'REJECT', 'REVOKE', 'REQUIRE_REVERIFICATION', 'REQUEST_INFO')),
+    CHECK (action IN ('APPROVE', 'REJECT', 'REVOKE', 'REQUIRE_REVERIFICATION', 'REQUEST_INFO', 'APPROVE_CREDENTIAL', 'REJECT_CREDENTIAL')),
   from_status text,
   to_status text,
   -- What the same decision did to profiles.tutor_verification_status.

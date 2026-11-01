@@ -28,7 +28,7 @@ describe('"Verification setup is not finished on this environment"', () => {
     const res = schemaNotReady({ code: '42P01', message: 'x' })!;
     expect(res.status).toBe(503);
     expect(await res.json()).toEqual({ error: SETUP_MESSAGE, code: SETUP_CODE });
-    expect(SETUP_MESSAGE).toBe('Verification setup is not finished on this environment.');
+    expect(SETUP_MESSAGE).toBe('Verification setup is not finished yet.');
     expect(schemaNotReady(new Error('boom'))).toBeNull();
   });
 

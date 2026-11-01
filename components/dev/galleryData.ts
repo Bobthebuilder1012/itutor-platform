@@ -17,6 +17,7 @@ export function mkState(
     decisionReason: null,
     reference: 'VR-7D3B1F42',
     editable: true,
+    canAddCredentials: true,
     step: 2,
     credentials: [],
     extras: [],
@@ -37,8 +38,8 @@ export function mkState(
 }
 
 export const CREDENTIALS: VerificationV2StateDto['credentials'] = [
-  { id: 'c1', kind: 'CSEC', subject: 'Mathematics', grade: 'I', examYear: 2019, school: null, degree: null, field: null, graduationYear: null, proofUrl: 'https://example.com/proof', proofFilename: null, hasProofFile: false },
-  { id: 'c2', kind: 'DEGREE', subject: null, grade: null, examYear: null, school: 'University of the West Indies', degree: 'BSc', field: 'Physics', graduationYear: 2022, proofUrl: null, proofFilename: 'degree.pdf', hasProofFile: true },
+  { id: 'c1', kind: 'CSEC', subject: 'Mathematics', grade: 'I', examYear: 2019, school: null, degree: null, field: null, graduationYear: null, proofUrl: 'https://example.com/proof', proofFilename: null, hasProofFile: false, pending: false },
+  { id: 'c2', kind: 'DEGREE', subject: null, grade: null, examYear: null, school: 'University of the West Indies', degree: 'BSc', field: 'Physics', graduationYear: 2022, proofUrl: null, proofFilename: 'degree.pdf', hasProofFile: true, pending: false },
 ];
 
 export const EXTRAS: VerificationV2StateDto['extras'] = [
@@ -85,6 +86,7 @@ export function mkDetail(
 }
 
 export const PANEL_DETAIL: PublicDetail = {
+  tutorId: '7d3b1f42-0a55-4e6c-8f21-9a4c2e6b1d03',
   idChecked: true,
   credentialsReviewed: true,
   hasExtras: true,

@@ -41,6 +41,7 @@ DROP INDEX IF EXISTS public.uq_tutor_verification_v2_provider_session;
 ALTER TABLE public.tutor_verification_v2 DROP CONSTRAINT IF EXISTS tutor_verification_v2_identity_provider_check;
 ALTER TABLE public.tutor_verification_v2 DROP CONSTRAINT IF EXISTS tutor_verification_v2_identity_country_check;
 ALTER TABLE public.tutor_verification_v2
+  DROP COLUMN IF EXISTS identity_name_match,
   DROP COLUMN IF EXISTS identity_provider_code,
   DROP COLUMN IF EXISTS identity_country,
   DROP COLUMN IF EXISTS identity_providers_tried,

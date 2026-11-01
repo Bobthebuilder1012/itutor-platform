@@ -24,7 +24,7 @@ export async function GET(_req: NextRequest, { params }: { params: { tutorId: st
   const { data: row, error } = await g.db
     .from('tutor_verification_v2')
     .select(
-      'tutor_id, status, consent_at, identity_status, identity_error_code, identity_provider, identity_provider_code, identity_country, identity_attempts, identity_verified_at, submitted_at, decision_reason, decided_at, identity_redacted_at, files_deleted_at'
+      'tutor_id, status, consent_at, identity_status, identity_error_code, identity_provider, identity_provider_code, identity_country, identity_attempts, identity_verified_at, identity_name_match, submitted_at, decision_reason, decided_at, identity_redacted_at, files_deleted_at'
     )
     .eq('tutor_id', tutorId)
     .maybeSingle();
@@ -45,7 +45,7 @@ export async function GET(_req: NextRequest, { params }: { params: { tutorId: st
     g.db
       .from('tutor_credentials_v2')
       .select(
-        'id, kind, subject, grade, exam_year, school, degree, field, graduation_year, proof_url, proof_path, proof_filename, proof_deleted_at'
+        'id, kind, subject, grade, exam_year, school, degree, field, graduation_year, proof_url, proof_path, proof_filename, proof_deleted_at, pending_approval'
       )
       .eq('tutor_id', tutorId)
       .order('created_at', { ascending: true }),
@@ -83,6 +83,7 @@ export async function GET(_req: NextRequest, { params }: { params: { tutorId: st
         proofFilename: c.proof_filename,
         proofLink,
         proofDeleted: !!c.proof_deleted_at,
+        pending: !!c.pending_approval,
         evidence: evidenceFor(c.kind, c.subject ?? c.degree ?? c.field).map((r) => ({
           key: r.key,
           label: r.label,
@@ -113,6 +114,8 @@ export async function GET(_req: NextRequest, { params }: { params: { tutorId: st
         attempts: row.identity_attempts,
         verifiedAt: row.identity_verified_at,
         redacted: !!row.identity_redacted_at,
+        /** Plain yes or no: does the name on the verified document match the profile name? null = not checked. */
+        nameMatch: typeof row.identity_name_match === 'boolean' ? row.identity_name_match : null,
       },
       submittedAt: row.submitted_at,
       decisionReason: row.decision_reason,

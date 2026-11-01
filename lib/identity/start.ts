@@ -9,6 +9,7 @@ import { identityRouting } from '@/config/identityRouting';
 import { setIdentityStatus, type Db } from '@/lib/verification/setStatus';
 import { getProvider, routeForCountry } from './registry';
 import { notifyIdentityOutcome } from '@/lib/verificationV2/notify';
+import { nameMatchExtra } from './nameMatch';
 import { outcomeToStored } from './mapping';
 import { decideNextStep } from './routing';
 import { isProviderName, type ProviderName } from './types';
@@ -116,6 +117,7 @@ export async function startIdentityCheck(opts: {
           actor: 'system',
           sessionRef: currentRef,
           provider: current,
+          extra: await nameMatchExtra(db, tutorId, existing.documentName),
           db,
         });
         if (!saved.ok && saved.code === 'db_error') {
