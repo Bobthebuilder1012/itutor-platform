@@ -74,6 +74,28 @@
     --muted: oklch(0.96 0.005 150);
     --muted-foreground: var(--ink-muted);
     --card: #ffffff;
+
+    /* ── Channel form of the four shared colour names ────────────────────
+     * brand, ink, ink-muted and border are the only Tailwind colour names
+     * used by BOTH the legacy UI and the new design system. Tailwind can
+     * only produce an alpha variant (bg-brand/60) from a colour it can split
+     * into channels, which it cannot do with a bare var(), so those four keys
+     * resolve to rgb(var(--ds-*) / <alpha-value>) and read these.
+     *
+     * THESE ARE ADDITIVE AND CARRY THE LEGACY VALUES. The oklch() variables
+     * above are untouched because raw CSS below still uses them in gradients
+     * and color-mix(). Each triple is the exact sRGB of the oklch above it —
+     * all five are in gamut, so the conversion is lossless at 8 bits and no
+     * existing page changes colour.
+     *
+     * components/ui/ds-tokens.css overrides these four inside `.ds-root`,
+     * which is how the new UI gets its own palette without touching any of
+     * the ~2,700 legacy uses of these class names.
+     */
+    --ds-brand: 75 201 87; /* oklch(0.74 0.19 145) */
+    --ds-ink: 9 19 26; /* oklch(0.18 0.02 240) */
+    --ds-ink-muted: 89 101 110; /* oklch(0.5 0.02 240) */
+    --ds-border: 224 230 225; /* oklch(0.92 0.01 150) */
   }
 
   /* Dark variant — used by the dark student sidebar (<aside class="dark">) */
@@ -84,6 +106,10 @@
     --muted-foreground: oklch(0.6 0.01 240);
     --border: oklch(0.28 0.01 240);
     --card: oklch(0.18 0.01 240);
+
+    /* Must track --border above, or border-border inside the dark sidebar
+     * would fall back to the light value. */
+    --ds-border: 37 42 45; /* oklch(0.28 0.01 240) */
   }
 
   html {

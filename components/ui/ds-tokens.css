@@ -1,0 +1,73 @@
+/*
+ * iTutor design-system tokens, scoped to the new UI.
+ *
+ * WHY THIS FILE EXISTS AT ALL. Four design-system token names — brand, ink,
+ * ink-muted and border — already exist in tailwind.config.ts with different
+ * legacy values, and the current pages use them about 2,700 times
+ * (bg-brand 680, text-ink 1206, border-border 856). Those four Tailwind keys
+ * resolve through CSS variables, so retargeting the variables on a single
+ * wrapper element gives the new UI the design-system values without editing a
+ * single existing page: inside `.ds-root`, `bg-brand` is #32cc6e; outside it,
+ * it is still the legacy green.
+ *
+ * Every other design-system token is a literal value in tailwind.config.ts and
+ * needs nothing here.
+ *
+ * The fonts work the same way. `font-display` resolves to var(--font-display)
+ * and `font-sans`/`font-body` to var(--font-sans); both are set on <html> by
+ * next/font for the old UI, and re-pointed here at the two design-system
+ * faces loaded in app/layout.tsx.
+ */
+
+.ds-root {
+  /*
+   * The four names shared with the legacy palette, as RGB channels.
+   *
+   * CHANNELS RATHER THAN HEX because Tailwind can only build an alpha variant
+   * (bg-brand/60, text-ink/50) out of a colour it can split into components.
+   * A bare var() cannot be split, so the slash modifier used to be dropped
+   * SILENTLY — a scrim written bg-ink/60 rendered fully opaque with no error.
+   * These four keys resolve to rgb(var(--ds-*) / <alpha-value>), so opacity
+   * now works on them the same as on any literal token.
+   */
+  --ds-brand: 50 204 110; /* #32cc6e */
+  --ds-ink: 13 35 24; /* #0d2318 */
+  --ds-ink-muted: 79 97 87; /* #4f6157 */
+  --ds-border: 213 219 209; /* #d5dbd1 */
+
+  /*
+   * The raw names kept in step, derived rather than repeated, so that any
+   * plain CSS inside the shell reading var(--brand) agrees with what
+   * bg-brand paints. One source of truth: the channels above.
+   */
+  --brand: rgb(var(--ds-brand));
+  --ink: rgb(var(--ds-ink));
+  --ink-muted: rgb(var(--ds-ink-muted));
+  --border: rgb(var(--ds-border));
+
+  /* Archivo for display, Atkinson Hyperlegible Next for body. */
+  --font-display: var(--font-archivo), Archivo, system-ui, sans-serif;
+  --font-sans: var(--font-atkinson), 'Atkinson Hyperlegible Next',
+    'Atkinson Hyperlegible', system-ui, sans-serif;
+
+  background-color: #f2f4ef; /* surface-page; not shared, so not scoped */
+  color: rgb(var(--ds-ink));
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.ds-root *,
+.ds-root *::before,
+.ds-root *::after {
+  box-sizing: border-box;
+}
+
+/*
+ * A portal host (see DsPortal) sits directly under <body> so that modals,
+ * sheets, toasts and popovers still inherit the tokens above. It must carry
+ * them without painting the page background, which would otherwise cover the
+ * page, and it must not take part in layout.
+ */
+.ds-root--portal {
+  background-color: transparent;
+}

@@ -24,6 +24,7 @@
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "@heroicons/react": "^2.2.0",
+    "@phosphor-icons/react": "^2.1.10",
     "@react-email/components": "^1.0.12",
     "@stripe/react-stripe-js": "^6.8.0",
     "@stripe/stripe-js": "^9.12.1",
