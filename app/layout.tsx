@@ -1,12 +1,44 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import { Inter, Space_Grotesk } from 'next/font/google';
+import { Inter, Space_Grotesk, Archivo } from 'next/font/google';
+import localFont from 'next/font/local';
 import { AuthProvider } from '@/components/AuthProvider';
 import SuppressHydrationWarnings from '@/components/SuppressHydrationWarnings';
 import ImpersonationBanner from '@/components/admin/ImpersonationBanner';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans', display: 'swap' });
 const spaceGrotesk = Space_Grotesk({ subsets: ['latin'], variable: '--font-display', display: 'swap' });
+
+// ── The new UI's two faces ────────────────────────────────────────────────
+// These only define CSS variables. Nothing reads them outside `.ds-root`
+// (components/ui/ds-tokens.css), so no existing page changes typeface.
+const archivo = Archivo({
+  subsets: ['latin'],
+  weight: ['700', '800'],
+  variable: '--font-archivo',
+  display: 'swap',
+});
+
+// ATKINSON HYPERLEGIBLE NEXT IS SELF-HOSTED, NOT LOADED FROM next/font/google.
+// Next 14.2's bundled Google font list (1,625 families) has no "Atkinson
+// Hyperlegible Next" entry — only the older "Atkinson Hyperlegible", which
+// ships 400 and 700 and no 800. The design system specs 800 for row titles,
+// prices, button labels, eyebrows and tags, so falling back to the older
+// family would have quietly rendered most of the UI a weight light.
+//
+// The file in ./fonts is the latin subset Google serves for this family, and
+// it is a VARIABLE font (fvar/gvar/avar/STAT), so this one 34 KB file covers
+// the whole 400–800 range that the three @font-face rules on Google Fonts all
+// point at. Hence the `weight: '400 800'` range rather than three faces.
+//
+// Licence: SIL Open Font License 1.1, ./fonts/OFL.txt.
+const atkinson = localFont({
+  src: './fonts/AtkinsonHyperlegibleNext-Variable.woff2',
+  weight: '400 800',
+  style: 'normal',
+  variable: '--font-atkinson',
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   title: 'iTutor - Caribbean Education Platform',
@@ -54,7 +86,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${inter.variable} ${spaceGrotesk.variable} scroll-smooth`}>
+    <html
+      lang="en"
+      className={`${inter.variable} ${spaceGrotesk.variable} ${archivo.variable} ${atkinson.variable} scroll-smooth`}
+    >
       <body>
         <SuppressHydrationWarnings />
         <AuthProvider>
