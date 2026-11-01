@@ -1,6 +1,7 @@
 # SCREEN_MAP — Figma frames to app routes
 
-Status: **draft for review. Nothing has been built from this yet.**
+Status: **logic rows approved 2026-11-01. Parent frames mapped. Student half and
+Alejandro's parent frames still need node ids — see "Pending" at the end.**
 
 This maps every frame in the parent Figma file to the route it replaces, lists the
 routes that have no frame, and flags the rows that are a change in behaviour rather
@@ -154,53 +155,73 @@ Pause/resume logic already exists (`lib/payments/subscriptionPause.ts`). UI only
 
 ---
 
-## Routes with no frame
+## Routes Arjun's file does not cover — resolved
 
-These exist in the app today and the parent Figma file has nothing for them. Each
-needs a decision: keep on the old UI, design a frame, or drop.
+Arjun's file is the parent app. For routes it lacks, **Alejandro's second parent
+design** (in the Student UI file, `rwytRx6xmRHf4AMzpxAznd`) supplies the frame.
+Decisions below are approved; node ids are pending the index file.
 
-| Route | What it is | Note |
-| --- | --- | --- |
-| `/parent/calendar` | Calendar view | **no frame** — no calendar anywhere in the new design |
-| `/parent/messages` | Parent ↔ tutor messages | **no frame** — the student spec puts Messages behind a header icon, not a tab; the parent file has none at all |
-| `/parent/feedback` | Feedback surface | **no frame** — currently a top-level nav item |
-| `/parent/matches` | Match results | **no frame** — overlaps "Explore"; may be superseded |
-| `/parent/children` | Children list | **no frame** — only the single-child "Droove" detail exists (`160:8307`) |
-| `/parent/coming-soon` | Placeholder | **no frame** — probably retire |
-| `/parent/classes/[groupId]` vs `/parent/children/[childId]/classes/[groupId]` | Two routes for one class page | **no frame** distinguishes them; one frame serves both |
+| Route | Source frame | Source file | Status |
+| --- | --- | --- | --- |
+| `/parent/calendar` | `P11-2` | Alejandro (Student UI) | node id **pending** |
+| `/parent/messages` | `MP01`–`MP05` | Alejandro (Student UI) | node ids **pending** |
+| `/parent/feedback` | `P15-1` | Alejandro (Student UI) | node id **pending** |
+| `/parent/children` (list) | `P14-1` | Alejandro (Student UI) | node id **pending** |
+| Sign-up | `PO01`–`PO07` | Alejandro (Student UI) | node ids **pending** |
+| Login | `LG01`–`LG04` | Alejandro (Student UI) | node ids **pending** |
 
-Student routes are all unmapped for now — see below.
+Alejandro's file also carries a fuller parent design `P01`–`P15`. **Only the frames
+above are used.** Arjun's file remains the parent app everywhere it has a frame —
+Alejandro's parent screens are not a competing source for Home, Explore, Classes,
+Billing or Profile.
+
+### Dropped and deferred
+
+| Route | Decision |
+| --- | --- |
+| `/parent/coming-soon` | **DROP** |
+| `/parent/children/[childId]/classes/[groupId]` | **DROP** — duplicate of `/parent/classes/[groupId]` |
+| `/parent/matches` | **Keep the old UI for now.** Not rebuilt in this pass; revisit once Explore lands |
+| `/parent/approvals` | **Redirect** → Classes tab |
+| `/parent/subscriptions` | **Redirect** → Classes tab |
+| `/parent/transactions` | **Fold into** Billing as a sub-screen |
 
 ---
 
-## Logic changes — read before approving
+## Logic changes — APPROVED as designed (2026-11-01)
 
-These are not reskins. Each needs a decision from you.
+These are not reskins. All six were approved; the resolution is recorded with each.
 
-**1. Classes merges Bookings and Classes.** The design system states it directly:
-"Classes merges Bookings and Classes, with an Upcoming / Past toggle." Today that is
-`/parent/approvals` (booking requests) plus `/parent/subscriptions` (enrolments) as
-two separate nav items. Frames `160:3622` / `160:3831`.
+**1. Classes replaces Approvals and Subscriptions.** APPROVED. `/parent/approvals`
+and `/parent/subscriptions` are **replaced** by one Classes tab with an
+Upcoming / Past toggle (`160:3622` / `160:3831`). **Both old routes redirect** to the
+new Classes tab — they are not kept as separate pages. Booking requests become a
+section inside Upcoming.
 
-**2. The nav drops from 8 items to 5.** Current parent nav in `DashboardLayout.tsx`
-is Home · Approvals · Children · Feedback · Find Classes · Subscriptions ·
-Transactions · Settings. The new `BottomNav` is Home · Explore · Classes · Billing ·
-Profile. Approvals, Children, Feedback and Transactions all lose their top-level
-place — they move inside Classes, Profile or Billing.
+**2. The nav drops from 8 items to 5.** APPROVED. New `BottomNav`:
+**Home · Explore · Classes · Billing · Profile**. Where the displaced items go:
 
-**3. "Explore" is a new concept for parents.** There is no `/parent/explore`. The
-nearest surface is `/parent/classes` ("Find Classes"). The nine Explore frames are a
-browse-and-search catalogue with subject filters, which is closer to the student
-`ExploreMarketplace` than to anything the parent app has. Decide whether Explore
-reuses the student marketplace component or becomes its own parent route.
+| Was a top-level nav item | Now lives under |
+| --- | --- |
+| Approvals | Classes (Upcoming) |
+| Subscriptions | Classes |
+| Children | **Profile** |
+| Settings | **Profile** |
+| Transactions | **Billing** |
+| Feedback | Profile (frame pending — see Alejandro's `P15-1`) |
 
-**4. Billing and Transactions overlap.** `/parent/billing` is "Enrolment & payment
-history" and `/parent/transactions` is "Transaction history". The new design has one
-Billing tab (`160:4095`) plus a Payment history screen (`160:6964`). Two routes
-collapse into one tab with a sub-screen.
+**3. "Explore" is a new concept for parents.** APPROVED. Parent Explore **reuses
+`ExploreMarketplace`'s data and logic behind a parent wrapper** — not a reimplementation
+and not a second data path. Only the presentation is parent-specific. Keep its existing
+queries, filters and the groups RLS behaviour as they are.
 
-**5. Fix failed payment has no route.** Six frames, no equivalent today (section 6).
-Needs a new route and a decision on where it is entered from.
+**4. Billing and Transactions overlap.** APPROVED. One Billing tab (`160:4095`) with
+**Transactions as a sub-screen** (`160:6964`). `/parent/transactions` folds into Billing.
+
+**5. Fix failed payment is a new route under Billing.** APPROVED. Six frames
+(section 6) become a route nested under Billing, entered from **two places**: the
+Home "Needs action" card (`160:1828`) and the **dot on the Billing tab** in the
+bottom nav (`BottomNav` supports this via `badge` on a `NavItem`).
 
 **6. Dark to light.** The current parent app is dark (`itutor-card` `#0F0F0F`); the
 design system is light-only and defines no dark theme. Every parent screen rebuilt
@@ -210,22 +231,34 @@ be visibly two-toned until the flow is complete — which is what
 
 ---
 
-## Student app — not mapped yet
+## Pending — what this map still needs
 
-The student file's screen frames could not be extracted: `get_metadata` on the
-screens section (`2:2705`) returns a single empty frame (`2:439`) with no children,
-and the Figma MCP connection then dropped and needs re-authentication. So no student
-node ids are recorded here, and none have been guessed.
+### Why the first student pass failed
 
-What is known: the spec section `55:33589` is organised by topic, not by frame, and
-its student part (`55:13631`) covers eight groups — Home and entry (`55:13636`),
-Squad hub and membership (`55:16641`), Sessions and focus (`55:19682`), Progress and
-sharing (`55:21611`), Share cards (`55:23992`), Teacher support (`55:24117`),
-Referrals and credit (`55:26034`), Messaging (`55:27199`). State variations live in
-section `31:8798`.
+I looked inside section `2:2705`, which holds only a single empty wrapper frame
+(`2:439`). **Correction: the student screens are top-level frames on page `0:1`,
+not nested in that section.** That is why nothing came back. No student node ids
+were guessed on the strength of the wrong lookup.
 
-All 37 routes under `app/student/` are therefore **no frame** at present. They will
-be mapped in a second pass once Figma is reconnected.
+What is known from the spec (`55:33589`), which is organised by topic rather than by
+frame: the student part (`55:13631`) covers eight groups — Home and entry
+(`55:13636`), Squad hub and membership (`55:16641`), Sessions and focus
+(`55:19682`), Progress and sharing (`55:21611`), Share cards (`55:23992`), Teacher
+support (`55:24117`), Referrals and credit (`55:26034`), Messaging (`55:27199`).
+State variations are in section `31:8798`, and the per-screen spec panels in
+`55:33589` are the behavioural source of truth for the student app.
+
+### Blocked on two inputs
+
+1. **`student-figma-index.md`** — the node-id index for the student file and for
+   Alejandro's parent frames (`P11-2`, `MP01`–`MP05`, `P15-1`, `P14-1`,
+   `PO01`–`PO07`, `LG01`–`LG04`). Not yet received.
+2. **Figma MCP re-authentication** — the connection dropped during the account
+   change and `whoami` still reports signed out. Needed both to resolve node ids and
+   to run `get_design_context` / `get_screenshot` per frame while building.
+
+All 37 routes under `app/student/` remain unmapped until then. None have been
+guessed.
 
 ---
 
