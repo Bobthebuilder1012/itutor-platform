@@ -309,11 +309,15 @@ export async function GET(request: NextRequest) {
         'This is the only email we will send about that request.',
     });
 
+    // Promotional: opted into, but it announces a class to buy ("places are
+    // limited"), not a receipt or a reminder for something already booked.
+    // It belongs on the marketing address.
     const result = await sendEmail({
       to,
       subject: rendered.subject,
       html: rendered.html,
       text: rendered.text,
+      category: 'promotional',
     });
 
     if (!result.success) {

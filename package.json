@@ -19,6 +19,7 @@
     "finder:migrate": "npx ts-node scripts/apply-finder-migrations.ts",
     "customerio:migrate": "npx ts-node scripts/apply-customerio-migrations.ts",
     "customerio:smoke": "npx ts-node --project scripts/tsconfig.scripts.json scripts/customerio-smoke-test.ts",
+    "email:senders": "npx ts-node --project scripts/tsconfig.verify.json scripts/verify-email-senders.ts",
     "credits:verify": "npx ts-node --project scripts/tsconfig.verify.json scripts/verify-credit-quote.ts"
   },
   "dependencies": {
@@ -44,7 +45,6 @@
     "react-dom": "^18.2.0",
     "react-easy-crop": "^5.5.6",
     "react-markdown": "^10.1.0",
-    "resend": "^6.9.1",
     "rrule": "^2.8.1",
     "stripe": "^22.4.0",
     "tailwind-merge": "^3.5.0",

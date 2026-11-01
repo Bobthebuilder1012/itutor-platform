@@ -146,7 +146,13 @@ export async function sendViaCustomerIo(
       });
 
       if (response.ok) {
-        const data = await response.json().catch(() => ({}));
+        // Typed rather than inferred: under the Next build's DOM typings json()
+        // is `any` and this reads fine, but under a plain Node lib it is
+        // `unknown` and `data?.delivery_id` stops compiling. The shape is one
+        // optional string either way, so state it.
+        const data = (await response.json().catch(() => ({}))) as {
+          delivery_id?: string;
+        };
         return { success: true, messageId: data?.delivery_id ?? undefined };
       }
 

@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
     }
 
     // For MVP: Log the support request to the database
-    // In production, you'd integrate with an email service (SendGrid, Resend, etc.)
+    // In production, this would also notify the support inbox by email.
     
     // Create a support_requests table entry (we'll create the table)
     const { error: insertError } = await supabase
@@ -73,33 +73,13 @@ export async function POST(request: NextRequest) {
     console.log('Issue:', issue);
     console.log('=====================');
 
-    // Simulate email sending
-    // In production, replace this with actual email service:
-    /*
-    const emailResponse = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: 'iTutor Support <noreply@myitutor.com>',
-        to: 'support@myitutor.com',
-        reply_to: email,
-        subject: `Support Request from ${name} (${userRole})`,
-        html: `
-          <h2>New Support Request</h2>
-          <p><strong>From:</strong> ${name}</p>
-          <p><strong>Email:</strong> ${email}</p>
-          <p><strong>User ID:</strong> ${userId}</p>
-          <p><strong>Role:</strong> ${userRole}</p>
-          <hr>
-          <h3>Issue:</h3>
-          <p>${issue}</p>
-        `,
-      }),
-    });
-    */
+    // This route records the request and does not mail anyone. What used to
+    // sit here was a commented-out direct call to Resend, removed rather than
+    // updated: Resend is no longer the provider, and a dead template is how a
+    // direct provider call gets pasted back in. To make this notify support
+    // for real, call sendEmail() from lib/services/emailService with to:
+    // 'support@myitutor.com' — it carries the sender split, the recipient
+    // allowlist and the provider, none of which a hand-rolled fetch would.
 
     return NextResponse.json({
       success: true,

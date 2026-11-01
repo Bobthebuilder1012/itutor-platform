@@ -92,7 +92,16 @@ export async function GET(request: NextRequest) {
           fullName: profile.full_name,
         });
 
-        const result = await sendEmail({ to: profile.email, subject, html, text: template.text });
+        // Promotional: this is the lifecycle drip, not a notification anyone
+        // is waiting on, so it goes out as hello@ and whatever complaint rate
+        // it earns stays off the address that carries password resets.
+        const result = await sendEmail({
+          to: profile.email,
+          subject,
+          html,
+          text: template.text,
+          category: 'promotional',
+        });
 
         if (result.success) {
           // THE LAST STEP ENDS THE SEQUENCE IN PLACE. This used to write

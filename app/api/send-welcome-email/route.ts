@@ -70,11 +70,16 @@ export async function POST(request: NextRequest) {
     const personalizedHtml = personalizeEmail(template.html, { firstName });
 
     console.log('Sending email...');
+    // Promotional: stage 0 of the onboarding sequence, drawn from the same
+    // email_templates rows and written in the same voice. Classified with the
+    // rest of the drip rather than split off on the grounds that it happens
+    // to be triggered by signup.
     const result = await sendEmail({
       to: profile.email,
       subject: personalizedSubject,
       html: personalizedHtml,
-      text: template.text
+      text: template.text,
+      category: 'promotional',
     });
 
     if (!result.success) {

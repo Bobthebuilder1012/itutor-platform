@@ -2,10 +2,30 @@
 // SEND PAYMENT RECEIPT EMAIL
 // =====================================================
 // Triggered by a Postgres trigger (via pg_net) after payments.status
-// is updated to 'succeeded'. Sends a receipt email to the payer
-// via Resend from receipt@myitutor.com.
+// is updated to 'succeeded'. Sends a receipt email to the payer through the
+// Customer.io Transactional API, from the transactional sender
+// noreply@myitutor.com.
+//
+// Required secret (Edge Functions -> Secrets, on the SUPABASE project — this
+// runs on Deno and sees none of Vercel's environment):
+//   CUSTOMERIO_APP_API_KEY   Customer.io App API key, NOT the Track key
+// Optional:
+//   CUSTOMERIO_REGION        "us" (default) or "eu"
+//   RECEIPT_EMAIL_FROM       overrides the sender
+//
+// It previously sent via Resend, using an API key written into this file as a
+// literal. That key is in the git history of a public repository and must be
+// treated as compromised: deleting it here does not revoke it.
 
 import { createClient } from 'npm:@supabase/supabase-js@2.89.0';
+
+/**
+ * The transactional sender, shared with lib/services/emailService and the
+ * send-auth-email hook. Stated here rather than imported because an edge
+ * function runs on Deno and cannot reach into the Next.js app.
+ */
+const RECEIPT_FROM =
+  Deno.env.get('RECEIPT_EMAIL_FROM')?.trim() || 'iTutor <noreply@myitutor.com>';
 
 function env(name: string): string {
   const v = Deno.env.get(name);
@@ -153,7 +173,6 @@ Deno.serve(async (req) => {
   try {
     const SUPABASE_URL = env('SUPABASE_URL');
     const SUPABASE_SERVICE_ROLE_KEY = env('SUPABASE_SERVICE_ROLE_KEY');
-    const RESEND_API_KEY = 're_ekFA52Sn_HzPNUmK24YFDuBRCKumPnced';
     const APP_URL = 'https://myitutor.com';
 
     const body = await req.json().catch(() => ({}));
@@ -215,29 +234,46 @@ Deno.serve(async (req) => {
       receiptUrl:     `${APP_URL}/payments/success?bookingId=${booking.id}`,
     });
 
-    const resendRes = await fetch('https://api.resend.com/emails', {
+    // env() throws when the key is absent, which is the right shape HERE and
+    // the opposite of the app's quiet-return: a Postgres trigger invokes this
+    // over pg_net, so a thrown error surfaces as a failed request that can be
+    // seen and retried, rather than a receipt that silently never arrives.
+    const cioKey = env('CUSTOMERIO_APP_API_KEY');
+    const region = (Deno.env.get('CUSTOMERIO_REGION') ?? 'us').trim().toLowerCase();
+    const cioHost = region === 'eu' ? 'https://api-eu.customer.io' : 'https://api.customer.io';
+
+    const sendRes = await fetch(`${cioHost}/v1/send/email`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${RESEND_API_KEY}`,
+        'Authorization': `Bearer ${cioKey}`,
         'Content-Type':  'application/json',
       },
       body: JSON.stringify({
-        from:    'iTutor Receipts <receipt@myitutor.com>',
+        from:    RECEIPT_FROM,
         to:      payer.email,
         subject: `Payment Receipt – ${subjectName} with ${tutorName}`,
-        html,
+        body:    html,
+        identifiers: { email: payer.email },
+        // A receipt must reach someone who opted out of marketing, and open
+        // pixels and rewritten links have no place on a financial record.
+        send_to_unsubscribed: true,
+        tracked: false,
       }),
     });
 
-    if (!resendRes.ok) {
-      const errText = await resendRes.text();
-      console.error('[send-payment-receipt] Resend error:', errText);
+    if (!sendRes.ok) {
+      const errText = await sendRes.text();
+      console.error('[send-payment-receipt] Customer.io error:', errText);
       return Response.json({ ok: false, error: errText }, { status: 500 });
     }
 
-    const resendData = await resendRes.json();
-    console.log('[send-payment-receipt] sent to', payer.email, 'id:', resendData.id);
-    return Response.json({ ok: true, email_id: resendData.id, durationMs: Date.now() - startedAt });
+    const sendData = await sendRes.json().catch(() => ({}));
+    console.log('[send-payment-receipt] sent to', payer.email, 'id:', sendData?.delivery_id);
+    return Response.json({
+      ok: true,
+      email_id: sendData?.delivery_id ?? null,
+      durationMs: Date.now() - startedAt,
+    });
 
   } catch (e) {
     console.error('[send-payment-receipt] unhandled error:', e);

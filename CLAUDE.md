@@ -19,7 +19,7 @@ Migration scripts are in `scripts/` and can be run with `npx ts-node scripts/<na
 - **Database/Auth**: Supabase (PostgreSQL + Auth with SSR cookie-based sessions)
 - **Styling**: TailwindCSS with custom brand colors (`green: #199356`, dark card backgrounds)
 - **Client data fetching**: TanStack React Query v5
-- **Email**: Resend + `@react-email/components`
+- **Email**: Customer.io Transactional API (Resend removed)
 - **Push notifications**: Firebase Cloud Messaging (FCM)
 - **Video**: Google Meet / Zoom OAuth integration
 - **Payments**: WiPay
@@ -52,7 +52,7 @@ Business logic lives here, not in components:
 - `bookingService.ts` — booking creation, cancellation, counter-offers
 - `sessionService.ts` — session status management
 - `notificationService.ts` — push notification delivery
-- `emailService.ts` — sends via Resend
+- `emailService.ts` — sends via Customer.io; the only way mail leaves the app
 - `videoProviders.ts` — Google Meet / Zoom meeting link generation
 - `commissionCalculator.ts` is in `lib/utils/` — calculates tutor earnings after platform cut
 
@@ -94,8 +94,9 @@ Required in `.env.local`:
 NEXT_PUBLIC_SUPABASE_URL
 NEXT_PUBLIC_SUPABASE_ANON_KEY
 SUPABASE_SERVICE_ROLE_KEY
-RESEND_API_KEY
-RESEND_FROM_EMAIL
+CUSTOMERIO_APP_API_KEY         # The ONLY email credential. Nothing sends
+                               # without it. NOT CUSTOMERIO_API_KEY, which is
+                               # the Track key and 401s on the send endpoint
 NEXT_PUBLIC_APP_URL
 CRON_SECRET
 NEXT_PUBLIC_VAPID_PUBLIC_KEY   # Web push notifications
@@ -103,6 +104,63 @@ TOKEN_ENCRYPTION_KEY           # For encrypting OAuth tokens
 PAID_CLASSES_ENABLED           # Feature flag (true/false)
 CLASS_MATCH_WEEK_ENABLED       # Class Match Week on/off (default true)
 ```
+
+### Email senders
+
+`sendEmail()` in `lib/services/emailService.ts` takes a `category`:
+
+- `transactional` (the **default** — anything unmarked) sends as
+  `iTutor <noreply@myitutor.com>`: verification codes, receipts, booking
+  confirmations, reminders, approval decisions, password resets.
+- `promotional` sends as `iTutor <hello@myitutor.com>`: the onboarding drip
+  (`/api/cron/send-onboarding-emails`), the welcome mail
+  (`/api/send-welcome-email`), and the demand-map class announcement
+  (`/api/cron/resolve-demand`). Those three are the whole list.
+
+```
+EMAIL_FROM                     # PROMOTIONAL sender only
+EMAIL_FROM_TRANSACTIONAL       # Overrides iTutor <noreply@myitutor.com>
+EMAIL_FROM_PROMOTIONAL         # Overrides EMAIL_FROM for marketing mail
+EMAIL_ALLOWLIST                # Comma list; `@domain` entries match a whole
+                               # domain. When set, ONLY these addresses
+                               # receive mail. Unset (production) = no filter
+CUSTOMERIO_EMAIL_REGION        # us | eu. Falls back to CUSTOMERIO_REGION
+```
+
+A transactional send deliberately **ignores `EMAIL_FROM` and
+`RESEND_FROM_EMAIL`**. The latter is still set on production and is why every
+message used to share one sender; honouring either would have kept password
+resets on the marketing address with nothing in the config looking wrong.
+
+**Resend has been removed**, and with it `EMAIL_PROVIDER`, `RESEND_API_KEY`
+and `RESEND_FROM_EMAIL`. Those are still set in Vercel and are now inert;
+delete them when convenient. Consequences worth knowing:
+
+- There is no second provider to fail over to. `CUSTOMERIO_APP_API_KEY` is a
+  single point of failure for all app email. It is a Vercel **team-level
+  Shared variable**, so it does **not** appear in `vercel env ls` or the
+  project env API, and it only reaches a project that is in its project list
+  — a missing key is easy to misdiagnose as "not configured" when it is
+  really "not linked".
+- A missing key makes `sendEmail()` return `success: false`, deliberately.
+  Returning success for a send that did not happen cost three users an
+  onboarding stage each on 2026-10-26, because `send-onboarding-emails`
+  advances `onboarding_stage` on `result.success`. Do not soften it.
+- Customer.io creates a person profile for every address it sends to, so
+  transactional mail loads users into the workspace as a side effect, which
+  has a billing consequence. `CUSTOMERIO_ALLOWED_EMAILS` does **not** guard
+  this path — it gates the Track-API profile sync only. `EMAIL_ALLOWLIST` is
+  the guard, and any environment pointed at production data needs it set.
+
+Two senders live outside the service and must move with it: the Supabase auth
+hook `send-auth-email` (`AUTH_EMAIL_FROM`, already noreply@) and
+`send-payment-receipt` (`RECEIPT_EMAIL_FROM`, moved off receipt@). Both run on
+Deno and cannot import the app's code, so set `CUSTOMERIO_APP_API_KEY` as a
+Supabase function secret too, not just in Vercel. Unlike the app, the receipt
+function throws when the key is absent — correct there, because a Postgres
+trigger invokes it and a thrown error is visible and retryable.
+
+`npm run email:senders` proves all of the above without sending anything.
 
 Customer.io (all optional — the integration is inert unless `CUSTOMERIO_ENABLED`
 is exactly `true`, and `getCustomerIoConfig()` returns null before any database

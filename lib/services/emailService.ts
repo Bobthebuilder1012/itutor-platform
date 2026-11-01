@@ -1,69 +1,75 @@
 // =====================================================
 // CENTRALIZED EMAIL SERVICE
 // =====================================================
-// Handles all email sending logic with Resend integration
+// Every transactional and lifecycle email the app sends goes out through
+// sendEmail() below, over the Customer.io Transactional API.
+//
+// RESEND HAS BEEN REMOVED, and the EMAIL_PROVIDER switch with it. With one
+// provider there is nothing to select, and a switch whose only alternative no
+// longer exists is a trap rather than an escape hatch: an unrecognised value
+// used to fall back to Resend, which now means falling back to nothing. The
+// seam survives — every send still funnels through this one function — so
+// adding a provider later is a change here and nowhere else.
+//
+// THE CONSEQUENCE, STATED PLAINLY: there is no second provider to fail over
+// to, so CUSTOMERIO_APP_API_KEY is the single point of failure for all app
+// email. Note that it is a Vercel TEAM-LEVEL SHARED variable, which does not
+// appear in `vercel env ls` or in the project env API, and which only reaches
+// a project that is in its project list. A missing key is therefore easy to
+// misdiagnose as "not configured" when it is really "not linked".
 
-import { Resend } from 'resend';
 import { getCustomerIoEmailConfig, sendViaCustomerIo } from '@/lib/email/providers/customerio';
 
 /**
- * Which service actually sends.
+ * Which address a send goes out as.
  *
- * This exists because a provider can be taken away from you with no notice —
- * a suspension, an outage, a billing dispute — and every transactional email
- * on the platform stops at once. Swapping provider should be an environment
- * variable and a redeploy, not a code change under time pressure.
+ * Two senders, deliberately kept apart, because they carry different risk:
  *
- * Defaults to Resend, so an environment that says nothing behaves exactly as
- * it did before this switch existed.
+ * - `transactional` — anything a person is waiting for because of something
+ *   they just did: verification codes, password resets, receipts, booking
+ *   confirmations, session reminders, approval decisions. noreply@myitutor.com.
+ * - `promotional` — lifecycle and marketing: the onboarding drip, the welcome
+ *   mail, "a class you asked about has opened". Stays on hello@myitutor.com.
+ *
+ * The point is not branding. A spam complaint, a block, or a spam-folder
+ * verdict earned by marketing mail follows the address that sent it. Splitting
+ * the two means a bad campaign cannot bury the password reset that is the only
+ * way back into someone's account.
+ *
+ * TRANSACTIONAL IS THE DEFAULT, and that is the safe way round. A send nobody
+ * classified is far likelier to be a notification than a campaign, and the
+ * cost of guessing wrong in this direction (a campaign from noreply) is much
+ * smaller than the other (a reset code from the marketing address).
  */
-type EmailProvider = 'resend' | 'customerio';
+export type EmailCategory = 'transactional' | 'promotional';
+
+const DEFAULT_TRANSACTIONAL_FROM = 'iTutor <noreply@myitutor.com>';
+const DEFAULT_PROMOTIONAL_FROM = 'iTutor <hello@myitutor.com>';
 
 /**
- * Whether EMAIL_PROVIDER names a provider explicitly.
+ * Resolve the From header for a category.
  *
- * This is the difference between "this environment has no email set up" and
- * "this environment asked for a provider and the credential is missing". The
- * first is a quiet no-op by design. The second is a misconfiguration, and
- * reporting it as a successful send is how it goes unnoticed — see the note
- * on the unconfigured paths in sendEmail.
+ * `EMAIL_FROM` used to be the single default for every send. It is now read
+ * for PROMOTIONAL mail only: a transactional send deliberately ignores it,
+ * because honouring it would mean an environment that sets it carried on
+ * sending password resets from the marketing address after this change, with
+ * nothing in the config looking wrong. Set EMAIL_FROM_TRANSACTIONAL to move
+ * that sender.
+ *
+ * `RESEND_FROM_EMAIL` is no longer consulted either. It is still set on
+ * production, and it is the reason every message on the platform used to share
+ * one sender; leaving it in this chain would have kept a removed provider’s
+ * variable quietly in charge of the marketing address.
  */
-function isProviderExplicit(): boolean {
-  return Boolean(process.env.EMAIL_PROVIDER?.trim());
-}
-
-function getProvider(): EmailProvider {
-  const raw = process.env.EMAIL_PROVIDER?.trim();
-  if (!raw) return 'resend';
-
-  // Punctuation and case are stripped before matching, so `customer.io`,
-  // `Customer.IO` and `customer-io` all select Customer.io. This is not
-  // tidiness: the product is written with a dot everywhere except in this
-  // value, an exact-match check would read the dotted spelling as "not
-  // Customer.io", and the fallback is the provider you are trying to move off.
-  // Combined with sendEmail reporting success when a provider is unconfigured,
-  // a single typo would mean silently sending nothing at all.
-  const normalized = raw.toLowerCase().replace(/[^a-z]/g, '');
-  if (normalized === 'customerio') return 'customerio';
-  if (normalized === 'resend') return 'resend';
-
-  // An unrecognised value is a misconfiguration, not a preference. Falling
-  // through to the default silently is how an outage lasts a day longer than
-  // it needed to, so it is said out loud on every send.
-  console.error(
-    `[EMAIL] Unrecognised EMAIL_PROVIDER "${raw}" — falling back to Resend. ` +
-      `Valid values: "resend", "customerio".`
+export function resolveFrom(category: EmailCategory): string {
+  if (category === 'transactional') {
+    return process.env.EMAIL_FROM_TRANSACTIONAL?.trim() || DEFAULT_TRANSACTIONAL_FROM;
+  }
+  return (
+    process.env.EMAIL_FROM_PROMOTIONAL?.trim() ||
+    process.env.EMAIL_FROM?.trim() ||
+    DEFAULT_PROMOTIONAL_FROM
   );
-  return 'resend';
-}
-
-let resendClient: Resend | null = null;
-
-function getResend(): Resend | null {
-  const key = process.env.RESEND_API_KEY;
-  if (!key) return null;
-  if (!resendClient) resendClient = new Resend(key);
-  return resendClient;
 }
 
 export interface SendEmailParams {
@@ -80,6 +86,16 @@ export interface SendEmailParams {
    * renderEmail this is just `text` off the result.
    */
   text?: string;
+  /**
+   * Which sender this goes out as. Defaults to `transactional`
+   * (noreply@myitutor.com). Pass `'promotional'` for lifecycle and campaign
+   * mail, which stays on hello@myitutor.com. See EmailCategory.
+   */
+  category?: EmailCategory;
+  /**
+   * An explicit From, for the rare send belonging to neither sender (a role
+   * address such as a receipts@ box). Overrides `category` when present.
+   */
   from?: string;
 }
 
@@ -118,84 +134,69 @@ function isAllowedRecipient(to: string): boolean {
 }
 
 /**
- * Send an email through whichever provider EMAIL_PROVIDER selects.
+ * Send one email. This is the only way mail leaves the app.
+ *
+ * The order is load-bearing: resolve the sender, check the recipient against
+ * EMAIL_ALLOWLIST, and only then touch Customer.io — because reaching
+ * Customer.io creates a person profile for the recipient, so suppression has
+ * to happen before that, not after.
  */
 export async function sendEmail({
   to,
   subject,
   html,
   text,
-  from = process.env.EMAIL_FROM ||
-    process.env.RESEND_FROM_EMAIL ||
-    'iTutor <hello@myitutor.com>',
+  category = 'transactional',
+  from,
 }: SendEmailParams): Promise<EmailResult> {
-  // The allowlist is checked FIRST, before any provider is consulted, because
+  // An explicit `from` wins; otherwise the category picks the sender. Resolved
+  // here rather than in a parameter default so the send, the suppression log
+  // and the failure path all report the same address.
+  const sender = from?.trim() || resolveFrom(category);
+
+  // The allowlist is checked FIRST, before the provider is consulted, because
   // it is the guard that makes a live-data environment safe to point at a real
-  // sender. It used to sit behind the Resend no-key check, which was harmless
-  // while a missing key meant nothing could send anyway. It is not harmless
-  // now: Customer.io CREATES a person profile for every address it sends to,
-  // so a send from staging does not just deliver a mail, it loads a real
-  // customer into a marketing tool. Suppression has to happen before that.
+  // sender. It used to sit behind a no-key check, which was harmless while a
+  // missing key meant nothing could send anyway. It is not harmless now:
+  // Customer.io CREATES a person profile for every address it sends to, so a
+  // send from staging does not just deliver a mail, it loads a real customer
+  // into a marketing tool. Suppression has to happen before that.
   //
   // Reported as success: a suppressed send is a deliberate outcome, not a
   // failure for the caller to retry or surface.
   if (!isAllowedRecipient(to)) {
-    console.log(`[EMAIL SUPPRESSED — not in EMAIL_ALLOWLIST] to=${to} subject=${subject}`);
+    console.log(
+      `[EMAIL SUPPRESSED — not in EMAIL_ALLOWLIST] to=${to} from=${sender} ` +
+        `category=${category} subject=${subject}`
+    );
     return { success: true, messageId: 'suppressed' };
   }
 
-  if (getProvider() === 'customerio') {
-    const config = getCustomerIoEmailConfig();
-    // A FAILURE, not a quiet skip. Customer.io can only be reached by naming
-    // it in EMAIL_PROVIDER, so arriving here means the environment asked for a
-    // provider whose credential is absent. Reporting that as a successful send
-    // is actively destructive: send-onboarding-emails advances a user's
-    // onboarding_stage and writes a 'success' log on result.success, so a
-    // no-op "success" consumes the stage and the email is never retried. That
-    // happened on production on 2026-10-26 — three users lost a stage each in
-    // the first cron run after the switch went live.
-    if (!config) {
-      console.error(`[EMAIL FAILED — no CUSTOMERIO_APP_API_KEY] to=${to} subject=${subject}`);
-      return {
-        success: false,
-        error:
-          'EMAIL_PROVIDER is customerio but CUSTOMERIO_APP_API_KEY is not set. ' +
-          'Note that a Vercel team-level Shared variable only reaches a project ' +
-          'that is in its project list.',
-      };
-    }
-    return sendViaCustomerIo({ to, from, subject, html, text }, config);
+  // Logged on every send that actually leaves, so "which address did that flow
+  // use?" is answerable from the runtime logs rather than from an inbox per
+  // flow. Address and subject only — never the body.
+  console.log(`[EMAIL] to=${to} from=${sender} category=${category} subject=${subject}`);
+
+  const config = getCustomerIoEmailConfig();
+  // A FAILURE, not a quiet skip, and this is not a style preference — it is
+  // the fix for a production incident. Reporting a send that did not happen as
+  // a success is actively destructive here: send-onboarding-emails advances a
+  // user's onboarding_stage and writes a 'success' log on result.success, so a
+  // no-op "success" consumes the stage and the email is never retried. That
+  // happened on production on 2026-10-26 — three users lost a stage each in
+  // the first cron run after the provider switch went live. Keep this false.
+  if (!config) {
+    console.error(`[EMAIL FAILED — no CUSTOMERIO_APP_API_KEY] to=${to} subject=${subject}`);
+    return {
+      success: false,
+      error:
+        'CUSTOMERIO_APP_API_KEY is not set, so no email can be sent. It is a ' +
+        'Vercel team-level Shared variable: check that it is linked to this ' +
+        'project, not just that it exists.',
+    };
   }
 
-  const resend = getResend();
-  // No RESEND_API_KEY configured. Quiet no-op ONLY when nothing named a
-  // provider — that is the long-standing "this environment has no email set
-  // up" case, and callers rely on it. If EMAIL_PROVIDER explicitly says
-  // resend, the missing key is a misconfiguration and must be reported as
-  // one, for the same reason as the Customer.io path above.
-  if (!resend) {
-    if (isProviderExplicit()) {
-      console.error(`[EMAIL FAILED — no RESEND_API_KEY] to=${to} subject=${subject}`);
-      return {
-        success: false,
-        error: 'EMAIL_PROVIDER is resend but RESEND_API_KEY is not set.',
-      };
-    }
-    console.log(`[EMAIL SKIPPED — no RESEND_API_KEY] to=${to} subject=${subject}`);
-    return { success: true, messageId: 'disabled' };
-  }
-  try {
-    // `text` is omitted rather than sent empty when the caller has none: Resend
-    // treats a present-but-empty text part as a text part, which is worse for
-    // the reader than having only HTML.
-    const { data, error } = await resend.emails.send(
-      text ? { from, to, subject, html, text } : { from, to, subject, html }
-    );
-    if (error) return { success: false, error: (error as { message?: string }).message ?? 'Send failed' };
-    return { success: true, messageId: data?.id };
-  } catch (e) {
-    return { success: false, error: e instanceof Error ? e.message : 'Send failed' };
-  }
+  return sendViaCustomerIo({ to, from: sender, subject, html, text }, config);
 }
 
 /**
@@ -310,7 +311,7 @@ export async function logEmailSend(params: {
   errorMessage?: string;
   /** Sequence step. Defaults to the `_stage_N` suffix of emailType, else 0. */
   stage?: number;
-  /** Resend's id for the message, when there is one. */
+  /** The provider's id for the message, when there is one. */
   messageId?: string;
 }) {
   try {
@@ -329,6 +330,9 @@ export async function logEmailSend(params: {
       email_type: params.emailType,
       status: params.status === 'success' ? 'success' : 'error',
       error_message: params.errorMessage ?? null,
+      // Column name is historical: it predates the move off Resend and now
+      // holds Customer.io's delivery_id. Renaming it needs a migration plus a
+      // sweep of every reader, so it stays until that is worth doing.
       resend_email_id: params.messageId ?? null,
     });
     if (error) {
