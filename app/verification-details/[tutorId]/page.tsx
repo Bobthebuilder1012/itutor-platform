@@ -8,7 +8,9 @@ import { loadVerificationDetailsPage, PROOF_LINK_SECONDS } from '@/lib/verificat
 
 // Public. Read per request so the signed proof links are always fresh and short-lived.
 export const dynamic = 'force-dynamic';
-export const metadata: Metadata = { title: 'Verification details', robots: { index: false, follow: false } };
+// No title here on purpose: this metadata is sent even when the page answers "not found", and a
+// title would then mention verification for a teacher who is not verified.
+export const metadata: Metadata = { robots: { index: false, follow: false } };
 
 const UUIDISH = /^[0-9a-zA-Z-]{1,64}$/;
 
